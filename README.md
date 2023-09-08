@@ -19,7 +19,7 @@ pip install dnspython
 
 Clone this repository:
 ```bash
-git clone https://github.com/yourusername/MX-Record-Checker.git
+git clone https://github.com/kaiserm99/MX-Record-Checker.git
 ```
 
 Navigate to the directory:
