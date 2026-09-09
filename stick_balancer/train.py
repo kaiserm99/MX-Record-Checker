@@ -161,7 +161,7 @@ def main() -> None:
             advance_at=0.95 * threshold,
         )
         stopper.curriculum = curriculum
-        eval_cb.callback_after_eval = curriculum
+        eval_cb.callback = curriculum        # SB3 keeps the after-eval callback in .callback
         curriculum.parent = eval_cb
     callback = eval_cb
 
