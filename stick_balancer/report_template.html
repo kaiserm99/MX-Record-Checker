@@ -332,7 +332,7 @@ const fmt = n => n.toLocaleString("en-US");
       ctx.beginPath(); ctx.moveTo(X - ux*len, Y - uy*len); ctx.lineTo(X - ux*12, Y - uy*12); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X - ux*16 + uy*9, Y - uy*16 - ux*9); ctx.lineTo(X - ux*16 - uy*9, Y - uy*16 + ux*9); ctx.closePath(); ctx.fill();
       ctx.font = '600 15px JetBrains Mono, monospace'; ctx.textAlign = 'center';
-      ctx.fillText(mag.toFixed(2)+' N push', X - ux*(len+40), Y - uy*(len+40) + 5);
+      ctx.fillText(mag.toFixed(2)+' N push', X - ux*(len+40), Y - uy*(len+40) - 14);
     }
     // readouts
     const t = frame*T.dt;
