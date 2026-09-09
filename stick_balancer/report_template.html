@@ -290,8 +290,7 @@ const fmt = n => n.toLocaleString("en-US");
   const stage = document.getElementById('stage'), ctx = stage.getContext('2d');
   const tabs = document.getElementById('tabs'), play = document.getElementById('play'), speed = document.getElementById('speed'),
         scrub = document.getElementById('scrub'), tlabel = document.getElementById('tlabel'), readout = document.getElementById('readout');
-  if(!runs.length){ document.getElementById('anim').innerHTML = '<h2>Watch the trained agents</h2>
-    <p style="color:var(--muted);font-size:.9rem">Pick an agent. "Swing-up" episodes start with the stick hanging down; "+ pushes" episodes include random shoves drawn as orange arrows.</p><p>No trajectories yet: run <code>train.py</code> then <code>evaluate.py --export</code>.</p>'; return; }
+  if(!runs.length){ document.getElementById('anim').innerHTML = '<h2>Watch the trained agents</h2><p>No trajectories yet: run <code>train.py</code> then <code>evaluate.py --export</code>.</p>'; return; }
   let cur = 0, frame = 0, playing = !matchMedia('(prefers-reduced-motion: reduce)').matches, acc = 0, last = performance.now();
   const label = r => r.config.links+' link'+(r.config.links>1?'s':'')+(r.config.task==='swingup'?' swing-up':'')+(r.config.phase==='shake'?' + pushes':'');
   runs.forEach((r,i)=>{ const b=document.createElement('button'); b.role='tab'; b.textContent = label(r); b.onclick=()=>{cur=i;frame=0;sync();}; tabs.appendChild(b); });

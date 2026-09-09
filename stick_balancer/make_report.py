@@ -59,6 +59,25 @@ def main() -> None:
     )
     Path("report.html").write_text(html)
     print("wrote report.html with", len(runs), "runs")
+    _check_script_parses(html)
+
+
+def _check_script_parses(html: str) -> None:
+    """Fail loudly if the page's JavaScript has a syntax error (a broken page
+    renders nothing below the header).  Uses `node --check` when available."""
+    import re
+    import shutil
+    import subprocess
+    import tempfile
+
+    if shutil.which("node") is None:
+        return
+    js = re.search(r"<script>(.*)</script>", html, re.S).group(1)
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+        f.write(js)
+    result = subprocess.run(["node", "--check", f.name], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SystemExit("report.html JavaScript does not parse:\n" + result.stderr)
 
 
 if __name__ == "__main__":
