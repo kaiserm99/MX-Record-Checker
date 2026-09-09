@@ -31,7 +31,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 from env import make_env
-from recipes import FINETUNE_PPO, budget_for, env_kwargs_for, recipe, run_name, stop_threshold
+from recipes import FINETUNE_PPO, SWINGUP_PPO, budget_for, env_kwargs_for, recipe, run_name, stop_threshold
 
 
 class PushCurriculum(BaseCallback):
@@ -69,6 +69,21 @@ class PushCurriculum(BaseCallback):
             self.eval_cb.best_mean_reward = -np.inf     # "best" now means best at this level
             print(f"push curriculum: agent copes, raising push strength to {self.force:.3f} N")
         return True
+
+
+class SaveStatsOnNewBest(BaseCallback):
+    """EvalCallback saves best_model.zip; also save the normaliser statistics next to it,
+    so the best model is usable (and inspectable) before training ends."""
+
+    def __init__(self, train_env, path: Path, then: BaseCallback):
+        super().__init__()
+        self.train_env, self.path, self.then = train_env, path, then
+
+    def _on_step(self) -> bool:
+        self.path.mkdir(parents=True, exist_ok=True)
+        self.train_env.save(str(self.path / "vecnormalize.pkl"))
+        self.then.parent = self.parent
+        return self.then.on_step()
 
 
 class StopWhenSolvedAtTarget(BaseCallback):
@@ -153,8 +168,8 @@ def main() -> None:
         eval_freq=max(20_000 // n_envs, 1),
         n_eval_episodes=10,
         deterministic=True,
-        # stop early once the agent balances (almost) every eval episode to the end
-        callback_on_new_best=stopper,
+        # on a new best: save the normaliser too, then stop early if solved
+        callback_on_new_best=SaveStatsOnNewBest(train_env, out / "best", stopper),
     )
     if args.phase == "shake":
         curriculum = PushCurriculum(
@@ -169,6 +184,8 @@ def main() -> None:
 
     algo_cls = {"ppo": PPO, "sac": SAC}[args.algo]
     algo_kwargs = dict(r[args.algo])
+    if args.task == "swingup" and args.algo == "ppo":
+        algo_kwargs.update(SWINGUP_PPO)
     if init_from is not None and args.algo == "ppo":
         algo_kwargs.update(FINETUNE_PPO)   # gentler updates when continuing from a trained agent
     model = algo_cls("MlpPolicy", train_env, seed=args.seed, device="cpu", verbose=0, **algo_kwargs)

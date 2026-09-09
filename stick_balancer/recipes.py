@@ -113,11 +113,17 @@ def env_kwargs_for(n_links: int, phase: str = "balance", task: str = "balance") 
     kwargs = {**r["env"]}
     if task == "swingup":
         kwargs.update(r["swingup"])
+        kwargs.pop("ppo_extra", None)
     if phase == "shake":
         kwargs.update(r["shake"])
         if task == "swingup":
             kwargs["shake_warmup"] = 8.0   # give the swing-up time before the first push
     return kwargs
+
+
+# Swing-up needs structured exploration: generalised state-dependent exploration (gSDE),
+# which the rl-baselines3-zoo uses for PPO on Pendulum swing-up.
+SWINGUP_PPO = dict(use_sde=True, sde_sample_freq=4)
 
 
 def budget_for(n_links: int, phase: str, task: str) -> int:

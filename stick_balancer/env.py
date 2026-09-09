@@ -15,7 +15,7 @@ Two tasks share one environment:
                (sin/cos because raw angles wrap at +-pi, exactly when the stick
                passes through the bottom)
       Reward:  the dm_control cartpole swing-up reward, a product in [0, 1] of
-                 upright        (1 + tip_height / stick_length) / 2
+                 upright        ((1 + tip_height / stick_length) / 2) ** 2
                  centred        1 - 0.5 (x / x_limit)^2
                  small_control  1 - 0.2 a^2
                  small_velocity 0.5 + 0.5 exp(-ln(10) (max |theta_dot| / 5)^2)
@@ -160,7 +160,9 @@ class StickBalanceEnv(gym.Env):
 
     def _swingup_reward(self, a: float) -> float:
         tip_height = self.tip_positions()[-1, 1]
-        upright = 0.5 * (1.0 + tip_height / self.params.total_length)
+        # Squared so that "lower link up, upper link hanging" (tip at hinge height, 0.5)
+        # earns 0.25 rather than 0.5: that half-up posture is a local optimum PPO otherwise settles in.
+        upright = (0.5 * (1.0 + tip_height / self.params.total_length)) ** 2
         centred = 1.0 - 0.5 * (self.q[0] / self.x_limit) ** 2
         small_control = 1.0 - 0.2 * a**2
         small_velocity = 0.5 + 0.5 * np.exp(-np.log(10.0) * (np.max(np.abs(self.qd[1:])) / 5.0) ** 2)
