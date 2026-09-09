@@ -42,7 +42,7 @@ def eval_curve(run_dir: Path) -> list[tuple[int, float]]:
 
 def main() -> None:
     runs = []
-    for run_dir in sorted(RUNS.glob("*links*")):
+    for run_dir in sorted(d for d in RUNS.glob("*links*") if d.is_dir()):
         traj = run_dir / "trajectory.json"
         runs.append({
             "name": run_dir.name,
