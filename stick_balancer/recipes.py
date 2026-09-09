@@ -22,6 +22,12 @@ Where do these numbers come from?
     fails and has to learn to recover: 1.0 N for one link, less for more links because
     the same impulse tips a jointed stick further.  Magnitudes are random in
     [0.3, 1] x shake_force so every episode mixes easy and hard pushes.
+  * Swing-up: the stick starts hanging down.  More force is needed to pump energy
+    into it (the classic single cart-pole swing-up works with ~10 N on a 1 kg cart,
+    jointed sticks need more), the reward is dm_control's product reward, and the
+    "solved" threshold is lower than for balancing because the first seconds of every
+    episode are necessarily spent swinging (a perfect swing-up of one link scores
+    roughly 850-900 out of 1000).
 Change numbers here, not in train.py.
 """
 
@@ -53,6 +59,9 @@ RECIPES: dict[int, dict] = {
         "total_timesteps": 200_000,
         "shake": dict(shake_force=1.0, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
         "shake_timesteps": 600_000,
+        "swingup": dict(task="swingup", max_force=15.0, init_noise=0.05),
+        "swingup_timesteps": 2_000_000,
+        "swingup_stop": 800.0,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=64, n_steps=512, batch=256, gamma=0.99, lam=0.95, epochs=10),
         "sac": _sac(net=256),
     },
@@ -61,6 +70,9 @@ RECIPES: dict[int, dict] = {
         "total_timesteps": 2_000_000,
         "shake": dict(shake_force=0.75, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
         "shake_timesteps": 1_000_000,
+        "swingup": dict(task="swingup", max_force=25.0, init_noise=0.05),
+        "swingup_timesteps": 4_000_000,
+        "swingup_stop": 750.0,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=128, n_steps=512, batch=256, gamma=0.99, lam=0.95, epochs=10),
         "sac": _sac(net=400),
     },
@@ -69,6 +81,9 @@ RECIPES: dict[int, dict] = {
         "total_timesteps": 5_000_000,
         "shake": dict(shake_force=0.5, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
         "shake_timesteps": 1_500_000,
+        "swingup": dict(task="swingup", max_force=35.0, init_noise=0.05),
+        "swingup_timesteps": 6_000_000,
+        "swingup_stop": 700.0,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=256, n_steps=1024, batch=512, gamma=0.99, lam=0.95, epochs=10),
         "sac": _sac(net=400),
     },
@@ -80,7 +95,32 @@ def recipe(n_links: int) -> dict:
     return RECIPES[min(n_links, max(RECIPES))]
 
 
-def env_kwargs_for(n_links: int, phase: str = "balance") -> dict:
-    """Environment arguments for a training phase: 'balance' (no pushes) or 'shake'."""
+def env_kwargs_for(n_links: int, phase: str = "balance", task: str = "balance") -> dict:
+    """Environment arguments for a task ('balance' or 'swingup') and a training
+    phase ('balance' = no pushes, 'shake' = random pushes once the stick is up)."""
     r = recipe(n_links)
-    return {**r["env"], **(r["shake"] if phase == "shake" else {})}
+    kwargs = {**r["env"]}
+    if task == "swingup":
+        kwargs.update(r["swingup"])
+    if phase == "shake":
+        kwargs.update(r["shake"])
+        if task == "swingup":
+            kwargs["shake_warmup"] = 8.0   # give the swing-up time before the first push
+    return kwargs
+
+
+def budget_for(n_links: int, phase: str, task: str) -> int:
+    r = recipe(n_links)
+    if task == "swingup" and phase == "balance":
+        return r["swingup_timesteps"]
+    return r["total_timesteps"] if phase == "balance" else r["shake_timesteps"]
+
+
+def stop_threshold(n_links: int, task: str, max_return: float) -> float:
+    """Evaluation return at which training stops: 98% of perfect for balancing,
+    a lower, per-link value for swing-up (the swing itself costs reward)."""
+    return recipe(n_links)["swingup_stop"] if task == "swingup" else 0.98 * max_return
+
+
+def run_name(n_links: int, algo: str, phase: str, task: str) -> str:
+    return f"{algo}_{n_links}links" + ("_swingup" if task == "swingup" else "") + ("_shake" if phase == "shake" else "")

@@ -24,6 +24,7 @@ python train.py --links 1                  # ~1 minute on a laptop CPU
 python train.py --links 2                  # double inverted pendulum
 python train.py --links 3 --timesteps 5e6  # triple inverted pendulum
 python train.py --links 2 --phase shake      # continue with random pushes
+python train.py --links 1 --task swingup     # start hanging down, learn to swing up
 python evaluate.py --links 2 --export runs/ppo_2links/trajectory.json
 python evaluate.py --links 2 --phase shake --export runs/ppo_2links_shake/trajectory.json
 python make_report.py && open report.html
@@ -57,6 +58,16 @@ stays smooth.  Every coefficient is a field of `CartPendulumParams`; use
 [-1, 1], scaled to a horizontal force on the cart.  Reward is 1 per step alive minus
 tiny quadratic penalties on cart offset, lean, and force (max 1000 per 20 s episode).
 The episode ends when the cart leaves +/-2.4 m or a link leans past the limit.
+
+**Swing-up.** With `--task swingup` the stick starts hanging straight down and
+the agent has to pump energy into it, flip it over, catch it and balance.  Three
+things change, all following the literature: angles are observed as sin/cos
+(raw angles wrap at +-pi, exactly at the bottom), nothing ends the episode except
+crashing the cart into the end of the track, and the reward is dm_control's
+swing-up product `upright * centred * small_control * small_velocity` in [0, 1]
+(hanging still scores 0, balanced scores 1).  The force limit is higher because
+energy has to be pumped in.  Swing-up agents can also be pushed
+(`--task swingup --phase shake`); the first push waits 8 s for the swing-up.
 
 **Pushes (phase two).** Once an agent balances, training continues from its
 weights with random disturbances switched on: whenever the stick has been calm

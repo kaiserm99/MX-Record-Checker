@@ -5,6 +5,8 @@ Train an agent to balance an N-link stick with Stable-Baselines3.
     python train.py --links 2 --algo ppo      # double inverted pendulum
     python train.py --links 3 --timesteps 4e6 # triple inverted pendulum
     python train.py --links 2 --phase shake   # continue from the balanced agent, with random pushes
+    python train.py --links 1 --task swingup  # stick starts hanging down and must be lifted up
+    python train.py --links 1 --task swingup --phase shake   # ... and then survive pushes
 
 Outputs go to runs/<algo>_<N>links/:
     model.zip            trained policy
@@ -29,7 +31,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 from env import make_env
-from recipes import env_kwargs_for, recipe
+from recipes import budget_for, env_kwargs_for, recipe, run_name, stop_threshold
 
 
 def build_vec_env(n_links: int, env_kwargs: dict, n_envs: int, seed: int, subprocess: bool):
@@ -48,6 +50,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--links", type=int, default=1)
     ap.add_argument("--algo", choices=["ppo", "sac"], default="ppo")
+    ap.add_argument("--task", choices=["balance", "swingup"], default="balance",
+                    help="'swingup' starts the stick hanging down")
     ap.add_argument("--phase", choices=["balance", "shake"], default="balance",
                     help="'shake' warm-starts from the balanced agent and adds random pushes")
     ap.add_argument("--init-from", type=Path, default=None,
@@ -63,13 +67,14 @@ def main() -> None:
     torch.set_num_threads(1)
 
     r = recipe(args.links)
-    env_kwargs = env_kwargs_for(args.links, args.phase)
-    total_timesteps = int(args.timesteps or (r["total_timesteps"] if args.phase == "balance" else r["shake_timesteps"]))
-    suffix = "" if args.phase == "balance" else "_shake"
-    out = args.out or Path("runs") / f"{args.algo}_{args.links}links{suffix}"
+    env_kwargs = env_kwargs_for(args.links, args.phase, args.task)
+    total_timesteps = int(args.timesteps or budget_for(args.links, args.phase, args.task))
+    out = args.out or Path("runs") / run_name(args.links, args.algo, args.phase, args.task)
     out.mkdir(parents=True, exist_ok=True)
     set_random_seed(args.seed)
-    init_from = args.init_from or (Path("runs") / f"{args.algo}_{args.links}links" if args.phase == "shake" else None)
+    init_from = args.init_from
+    if init_from is None and args.phase == "shake":
+        init_from = Path("runs") / run_name(args.links, args.algo, "balance", args.task)
 
     # SAC is off-policy and learns from a single env just fine; PPO wants many.
     n_envs = args.n_envs if args.algo == "ppo" else 1
@@ -93,7 +98,8 @@ def main() -> None:
         n_eval_episodes=10,
         deterministic=True,
         # stop early once the agent balances (almost) every eval episode to the end
-        callback_on_new_best=StopTrainingOnRewardThreshold(reward_threshold=0.98 * max_return, verbose=1),
+        callback_on_new_best=StopTrainingOnRewardThreshold(
+            reward_threshold=stop_threshold(args.links, args.task, max_return), verbose=1),
     )
 
     algo_cls = {"ppo": PPO, "sac": SAC}[args.algo]
@@ -106,12 +112,12 @@ def main() -> None:
     model.set_logger(configure(str(out), ["stdout", "csv"]))
 
     (out / "config.json").write_text(json.dumps({
-        "links": args.links, "algo": args.algo, "phase": args.phase, "timesteps": total_timesteps,
+        "links": args.links, "algo": args.algo, "task": args.task, "phase": args.phase, "timesteps": total_timesteps,
         "n_envs": n_envs, "seed": args.seed, "recipe": r, "env": env_kwargs,
         "init_from": str(init_from) if init_from else None,
     }, indent=2, default=str))
 
-    print(f"Training {args.algo.upper()} on {args.links}-link stick ({args.phase}) for {total_timesteps:,} steps -> {out}")
+    print(f"Training {args.algo.upper()} on {args.links}-link stick ({args.task}, {args.phase}) for {total_timesteps:,} steps -> {out}")
     model.learn(total_timesteps=total_timesteps, callback=callback, progress_bar=False)
 
     model.save(out / "model")

@@ -80,12 +80,13 @@ a{color:var(--accent-ink)}
 <header>
   <div class="eyebrow">Reinforcement learning · cart with an N-link stick · pure NumPy physics + Stable-Baselines3</div>
   <h1>Stick Balancer Lab</h1>
-  <p class="lede">An agent that teaches itself to balance a stick on a cart, then a stick with one joint, then two, in air, on real bearings, and then to survive being shoved. Same code, one number changes.</p>
+  <p class="lede">An agent that teaches itself to balance a stick on a cart, then a stick with one joint, then two, in air, on real bearings; then to survive being shoved; then to swing the stick up from hanging. Same code, one number changes.</p>
   <div id="summary" class="tablewrap"></div>
 </header>
 
 <section id="anim">
   <h2>Watch the trained agents</h2>
+    <p style="color:var(--muted);font-size:.9rem">Pick an agent. "Swing-up" episodes start with the stick hanging down; "+ pushes" episodes include random shoves drawn as orange arrows.</p>
   <div class="panel">
     <div class="tabs" id="tabs" role="tablist"></div>
     <canvas id="stage" width="1200" height="520" aria-label="Animation of the cart and stick controlled by the trained policy"></canvas>
@@ -131,6 +132,7 @@ a{color:var(--accent-ink)}
       <p><b>Reward</b> · 1 per step, minus 0.05·(x/x_max)², minus 0.05·mean(θᵢ/θ_max)², minus 0.001·a². Zero on the step that fails.</p>
       <p><b>Episode</b> · ends when the cart leaves the track or a link leans past θ_max; truncated at 1000 steps.</p>
       <p><b>Start</b> · every coordinate and velocity uniform in ±0.05, like CartPole-v1.</p>
+      <p><b>Swing-up</b> · the stick starts hanging straight down. The agent then sees sin/cos of each angle (raw angles wrap at ±π, exactly at the bottom), nothing ends the episode except crashing the cart into the end of the track, and the reward is dm_control's swing-up product: upright × centred × small control × small velocity, each in [0, 1]. Hanging still scores 0, perfectly balanced scores 1.</p>
       <p><b>Pushes</b> · in the second training phase, once the stick has been calm for a while, a random force (up to the recipe's push strength, random direction within 30° of horizontal) hits a random point of a random link or the cart for 0.1 s. Pushes recur about every 3 s (Poisson). The agent is not told; it has to feel it in the state and recover.</p>
     </div>
   </div>
@@ -220,16 +222,17 @@ const fmt = n => n.toLocaleString("en-US");
     const cfg = r.config || {}, ev = r.eval_curve || [], best = ev.length ? Math.max(...ev.map(p=>p[1])) : null;
     const last = Math.max(0, ...r.train_curve.map(p=>p[0]), ...ev.map(p=>p[0]));
     const traj = r.trajectory;
-    const solved = best !== null && best >= 980;
+    const thr = cfg.task==='swingup' ? ((cfg.recipe||{}).swingup_stop || 750) : 980;
+    const solved = best !== null && best >= thr;
     const status = solved ? '<span class="pill good"><i></i>balanced</span>' : (traj ? '<span class="pill warn"><i></i>partial</span>' : '<span class="pill warn"><i></i>training</span>');
-    return `<tr><td><b>${cfg.links} link${cfg.links>1?'s':''}${cfg.phase==='shake'?' + pushes':''}</b> · ${(cfg.algo||'').toUpperCase()}</td><td>${status}</td><td class="num">${best===null?'–':best.toFixed(0)}</td><td class="num">${traj?traj.return.toFixed(0):'–'}</td><td class="num">${fmt(last)}</td></tr>`;
+    return `<tr><td><b>${cfg.links} link${cfg.links>1?'s':''}${cfg.task==='swingup'?' swing-up':''}${cfg.phase==='shake'?' + pushes':''}</b> · ${(cfg.algo||'').toUpperCase()}</td><td>${status}</td><td class="num">${best===null?'–':best.toFixed(0)}</td><td class="num">${traj?traj.return.toFixed(0):'–'}</td><td class="num">${fmt(last)}</td></tr>`;
   }).join('');
   document.getElementById('summary').innerHTML = `<table><tr><th>Task</th><th>Status</th><th class="num">Best eval return</th><th class="num">Episode shown</th><th class="num">Steps trained</th></tr>${rows}</table>`;
 })();
 
 /* ---------- recipe table ---------- */
 (function(){
-  const rows = RUNS.filter(r => (r.config||{}).phase !== 'shake').map(r => {
+  const rows = RUNS.filter(r => (r.config||{}).phase !== 'shake' && (r.config||{}).task !== 'swingup').map(r => {
     const rc = (r.config||{}).recipe || {}, e = rc.env || {}, p = rc.ppo || {}, sh = rc.shake || {};
     const na = p.policy_kwargs && p.policy_kwargs.net_arch ? p.policy_kwargs.net_arch.pi.join('×') : '';
     return `<tr><td>${r.config.links}</td><td class="num">${e.max_force}</td><td class="num">${e.angle_limit}</td><td class="num">${fmt(rc.total_timesteps||0)}</td><td class="num">${p.n_steps}</td><td class="num">${p.batch_size}</td><td class="num">${p.gamma}</td><td class="num">${p.gae_lambda}</td><td class="num">${na}</td><td class="num">${sh.shake_force ?? '–'}</td></tr>`;
@@ -257,13 +260,14 @@ const fmt = n => n.toLocaleString("en-US");
     let g = yticks.map(v=>`<line x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line-soft)"/><text x="${ml-6}" y="${Y(v)+4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="JetBrains Mono,monospace">${v}</text>`).join('');
     for(let i=0;i<=xt;i++){ const t=xmax*i/xt; g+=`<text x="${X(t)}" y="${H-10}" text-anchor="${i==0?'start':i==xt?'end':'middle'}" font-size="10" fill="var(--muted)" font-family="JetBrains Mono,monospace">${t>=1e6?(t/1e6).toFixed(1)+'M':t>=1000?Math.round(t/1000)+'k':t}</text>`; }
     g += `<line x1="${ml}" x2="${W-mr}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/>`;
-    g += `<line x1="${ml}" x2="${W-mr}" y1="${Y(980)}" y2="${Y(980)}" stroke="var(--muted)" stroke-dasharray="3 4" opacity=".6"/>`;
+    const stopAt = r.config.task==='swingup' ? ((r.config.recipe||{}).swingup_stop || 750) : 980;
+    g += `<line x1="${ml}" x2="${W-mr}" y1="${Y(stopAt)}" y2="${Y(stopAt)}" stroke="var(--muted)" stroke-dasharray="3 4" opacity=".6"/>`;
     if(tr.length) g += `<path d="${path(tr)}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/>`;
     if(ev.length){ g += `<path d="${path(ev)}" fill="none" stroke="var(--series-2)" stroke-width="2" stroke-linejoin="round"/>`;
       ev.forEach(p=>{ g+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3" fill="var(--series-2)" stroke="var(--panel)" stroke-width="1.5"/>`; }); }
     g += `<line id="xh" x1="0" x2="0" y1="${mt}" y2="${H-mb}" stroke="var(--muted)" opacity="0" />`;
     const div = document.createElement('div'); div.className='chart';
-    div.innerHTML = `<h3>${r.config.links} link${r.config.links>1?'s':''}${r.config.phase==='shake'?' + pushes':''}</h3><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Learning curve for ${r.config.links} links">${g}</svg><div class="cap">episode return vs environment steps · dashed line is the 980 stop threshold</div>`;
+    div.innerHTML = `<h3>${r.config.links} link${r.config.links>1?'s':''}${r.config.task==='swingup'?' swing-up':''}${r.config.phase==='shake'?' + pushes':''}</h3><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Learning curve for ${r.config.links} links">${g}</svg><div class="cap">episode return vs environment steps · dashed line is the stop threshold</div>`;
     host.appendChild(div);
     const svg = div.querySelector('svg'), xh = svg.querySelector('#xh');
     svg.addEventListener('mousemove', e => {
@@ -286,9 +290,10 @@ const fmt = n => n.toLocaleString("en-US");
   const stage = document.getElementById('stage'), ctx = stage.getContext('2d');
   const tabs = document.getElementById('tabs'), play = document.getElementById('play'), speed = document.getElementById('speed'),
         scrub = document.getElementById('scrub'), tlabel = document.getElementById('tlabel'), readout = document.getElementById('readout');
-  if(!runs.length){ document.getElementById('anim').innerHTML = '<h2>Watch the trained agents</h2><p>No trajectories yet: run <code>train.py</code> then <code>evaluate.py --export</code>.</p>'; return; }
+  if(!runs.length){ document.getElementById('anim').innerHTML = '<h2>Watch the trained agents</h2>
+    <p style="color:var(--muted);font-size:.9rem">Pick an agent. "Swing-up" episodes start with the stick hanging down; "+ pushes" episodes include random shoves drawn as orange arrows.</p><p>No trajectories yet: run <code>train.py</code> then <code>evaluate.py --export</code>.</p>'; return; }
   let cur = 0, frame = 0, playing = !matchMedia('(prefers-reduced-motion: reduce)').matches, acc = 0, last = performance.now();
-  const label = r => r.config.links+' link'+(r.config.links>1?'s':'')+(r.config.phase==='shake'?' + pushes':'');
+  const label = r => r.config.links+' link'+(r.config.links>1?'s':'')+(r.config.task==='swingup'?' swing-up':'')+(r.config.phase==='shake'?' + pushes':'');
   runs.forEach((r,i)=>{ const b=document.createElement('button'); b.role='tab'; b.textContent = label(r); b.onclick=()=>{cur=i;frame=0;sync();}; tabs.appendChild(b); });
   function sync(){ [...tabs.children].forEach((b,i)=>b.setAttribute('aria-selected', i===cur)); scrub.max = runs[cur].trajectory.frames.length-1; }
   play.onclick = ()=>{ playing=!playing; play.textContent = playing?'Pause':'Play'; };

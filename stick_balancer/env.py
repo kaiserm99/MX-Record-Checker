@@ -1,12 +1,32 @@
 """
-Gymnasium environment: balance an N-link stick on a cart.
+Gymnasium environment: balance (or swing up and balance) an N-link stick on a cart.
 
-Observation (Box, shape 2N+2):  [x, x_dot, theta_1..theta_N, theta_dot_1..theta_dot_N]
-Action      (Box, shape 1, in [-1, 1]):  scaled to a horizontal force  u = action * max_force
-Reward      1.0 for every step alive minus small quadratic penalties that
-            keep the cart centred, the stick straight and the actions gentle.
-Episode ends (terminated) when the cart leaves the track or any link tilts
-more than `angle_limit`; it is truncated after `max_episode_steps`.
+Two tasks share one environment:
+
+  task="balance"  The stick starts upright with a little noise.
+      Observation (Box, 2N+2):  [x, x_dot, theta_1..theta_N, theta_dot_1..theta_dot_N]
+      Reward:  1.0 per step alive minus small quadratic penalties that keep the cart
+               centred, the stick straight and the actions gentle.
+      Ends (terminated) when the cart leaves the track or any link tilts more than
+      `angle_limit`; truncated after `max_episode_steps`.
+
+  task="swingup"  The stick starts hanging straight down and has to be lifted up.
+      Observation (Box, 3N+2):  [x, x_dot, sin(theta_1..N), cos(theta_1..N), theta_dot_1..N]
+               (sin/cos because raw angles wrap at +-pi, exactly when the stick
+               passes through the bottom)
+      Reward:  the dm_control cartpole swing-up reward, a product in [0, 1] of
+                 upright        (1 + tip_height / stick_length) / 2
+                 centred        1 - 0.5 (x / x_limit)^2
+                 small_control  1 - 0.2 a^2
+                 small_velocity 0.5 + 0.5 exp(-ln(10) (max |theta_dot| / 5)^2)
+               so every sub-goal has to be met at once; nothing can be "bought"
+               by sacrificing another.
+      Ends only when the cart hits the end of the track (a crash); otherwise
+      truncated after `max_episode_steps`.  There is no "fell over" termination,
+      because fallen is where it starts.
+
+Action (Box, shape 1, in [-1, 1]) is scaled to a horizontal force u = action * max_force
+in both tasks.
 
 Shakes (random disturbances).  With `shake_force > 0` the environment waits
 until the stick has been balanced calmly for a while and then pushes it: a
@@ -45,6 +65,7 @@ class StickBalanceEnv(gym.Env):
         self,
         n_links: int = 1,
         *,
+        task: str = "balance",          # "balance" or "swingup"
         max_force: float = 10.0,
         control_dt: float = 0.02,       # agent acts at 50 Hz (same as CartPole-v1)
         physics_substeps: int = 4,      # RK4 sub-steps per control step (h = 5 ms)
@@ -67,6 +88,8 @@ class StickBalanceEnv(gym.Env):
         shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
     ) -> None:
         super().__init__()
+        assert task in ("balance", "swingup"), task
+        self.task = task
         preset = {"realistic": realistic, "ideal": ideal}[physics]
         self.params = preset(
             n_links=n_links,
@@ -97,14 +120,12 @@ class StickBalanceEnv(gym.Env):
 
         # Observation bounds are only advisory (the agent normalises them
         # itself); velocities are unbounded in principle.
-        high = np.concatenate(
-            (
-                [x_limit * 2, np.finfo(np.float32).max],
-                np.full(n_links, angle_limit * 2),
-                np.full(n_links, np.finfo(np.float32).max),
-            )
-        ).astype(np.float32)
-        self.observation_space = spaces.Box(-high, high, dtype=np.float32)
+        big = np.finfo(np.float32).max
+        if task == "balance":
+            high = np.concatenate(([x_limit * 2, big], np.full(n_links, angle_limit * 2), np.full(n_links, big)))
+        else:
+            high = np.concatenate(([x_limit * 2, big], np.ones(2 * n_links), np.full(n_links, big)))
+        self.observation_space = spaces.Box(-high.astype(np.float32), high.astype(np.float32), dtype=np.float32)
         self.action_space = spaces.Box(-1.0, 1.0, shape=(1,), dtype=np.float32)
 
         self.q = np.zeros(n_links + 1)
@@ -113,10 +134,31 @@ class StickBalanceEnv(gym.Env):
 
     # ------------------------------------------------------------------ helpers
     def _obs(self) -> np.ndarray:
-        return np.concatenate(([self.q[0], self.qd[0]], self.q[1:], self.qd[1:])).astype(np.float32)
+        theta, thetad = self.q[1:], self.qd[1:]
+        if self.task == "balance":
+            parts = ([self.q[0], self.qd[0]], theta, thetad)
+        else:
+            parts = ([self.q[0], self.qd[0]], np.sin(theta), np.cos(theta), thetad)
+        return np.concatenate(parts).astype(np.float32)
+
+    @staticmethod
+    def _wrap(theta: np.ndarray) -> np.ndarray:
+        """Map angles to (-pi, pi] so that 'upright' is 0 whichever way the stick spun."""
+        return (theta + np.pi) % (2 * np.pi) - np.pi
 
     def _fallen(self) -> bool:
-        return bool(abs(self.q[0]) > self.x_limit or np.any(np.abs(self.q[1:]) > self.angle_limit))
+        return bool(abs(self.q[0]) > self.x_limit or np.any(np.abs(self._wrap(self.q[1:])) > self.angle_limit))
+
+    def _crashed(self) -> bool:
+        return bool(abs(self.q[0]) > self.x_limit)
+
+    def _swingup_reward(self, a: float) -> float:
+        tip_height = self.tip_positions()[-1, 1]
+        upright = 0.5 * (1.0 + tip_height / self.params.total_length)
+        centred = 1.0 - 0.5 * (self.q[0] / self.x_limit) ** 2
+        small_control = 1.0 - 0.2 * a**2
+        small_velocity = 0.5 + 0.5 * np.exp(-np.log(10.0) * (np.max(np.abs(self.qd[1:])) / 5.0) ** 2)
+        return float(upright * centred * small_control * small_velocity)
 
     def tip_positions(self) -> np.ndarray:
         """Cart hinge and link tips, shape (N+1, 2); handy for plotting."""
@@ -124,7 +166,7 @@ class StickBalanceEnv(gym.Env):
 
     def _is_calm(self) -> bool:
         return bool(
-            np.all(np.abs(self.q[1:]) < self.shake_calm_angle)
+            np.all(np.abs(self._wrap(self.q[1:])) < self.shake_calm_angle)
             and np.all(np.abs(self.qd[1:]) < self.shake_calm_rate)
         )
 
@@ -152,6 +194,8 @@ class StickBalanceEnv(gym.Env):
         n1 = self.n_links + 1
         self.q = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
         self.qd = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
+        if self.task == "swingup":
+            self.q[1:] += np.pi           # hanging straight down (plus the same small noise)
         self.steps = 0
         self._shake = None
         self._shake_steps_left = 0
@@ -169,19 +213,23 @@ class StickBalanceEnv(gym.Env):
         if self._shake_steps_left > 0:
             self._shake_steps_left -= 1
 
-        terminated = self._fallen()
         truncated = self.steps >= self.max_episode_steps
-
-        reward = (
-            1.0
-            - self.position_cost * (self.q[0] / self.x_limit) ** 2
-            - self.angle_cost * float(np.mean((self.q[1:] / self.angle_limit) ** 2))
-            - self.action_cost * a**2
-        )
-        if terminated:
-            reward = 0.0  # falling over is the worst thing that can happen
+        if self.task == "balance":
+            terminated = self._fallen()
+            reward = (
+                1.0
+                - self.position_cost * (self.q[0] / self.x_limit) ** 2
+                - self.angle_cost * float(np.mean((self.q[1:] / self.angle_limit) ** 2))
+                - self.action_cost * a**2
+            )
+            if terminated:
+                reward = 0.0  # falling over is the worst thing that can happen
+        else:
+            terminated = self._crashed()
+            reward = 0.0 if terminated else self._swingup_reward(a)
 
         info = {"force": u, "x": float(self.q[0]), "angles": self.q[1:].copy(),
+                "upright": bool(np.all(np.abs(self._wrap(self.q[1:])) < self.angle_limit)),
                 "shake": external[0] if external else None}
         return self._obs(), float(reward), terminated, truncated, info
 
