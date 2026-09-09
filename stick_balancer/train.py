@@ -79,6 +79,9 @@ class SaveStatsOnNewBest(BaseCallback):
         super().__init__()
         self.train_env, self.path, self.then = train_env, path, then
 
+    def _init_callback(self) -> None:
+        self.then.init_callback(self.model)   # the wrapped callback needs the model too
+
     def _on_step(self) -> bool:
         self.path.mkdir(parents=True, exist_ok=True)
         self.train_env.save(str(self.path / "vecnormalize.pkl"))
