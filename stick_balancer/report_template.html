@@ -96,7 +96,7 @@ a{color:var(--accent-ink)}
       <span id="tlabel" class="mono"></span>
     </div>
     <div class="readout" id="readout"></div>
-    <p class="cap" style="color:var(--muted);font-size:.85rem">Deterministic policy, one 20-second episode (1000 control steps at 50 Hz). The cart is 1 kg, the whole stick 0.1 kg and 1 m regardless of how many joints it has. Fails if the cart leaves ±2.4 m or any link leans past its limit.</p>
+    <p class="cap" style="color:var(--muted);font-size:.85rem">Deterministic policy, one 20-second episode (1000 control steps at 50 Hz). The cart is 1 kg, the whole stick 0.1 kg and 1 m regardless of how many joints it has, and it moves through air on real bearings (see the physics below). Fails if the cart leaves ±2.4 m or any link leans past its limit.</p>
   </div>
 </section>
 
@@ -112,9 +112,17 @@ a{color:var(--accent-ink)}
   <div class="grid2">
     <div class="panel">
       <h3>The physics (physics.py)</h3>
-      <p>Coordinates are the cart position and the absolute angle of each link from vertical. Every link is a uniform rod. The equations of motion come straight from d'Alembert's principle and are solved numerically each step, so the same 60 lines handle one link or ten:</p>
-      <div class="eq">M(q)·q̈ = u·e₀ + Σᵢ Jᵢᵀ( Fᵍʳᵃᵛᵢ − mᵢ·J̇ᵢ·q̇ ) − damping<br>M(q) = m₀e₀e₀ᵀ + Σᵢ ( mᵢ JᵢᵀJᵢ + Iᵢ eᵢeᵢᵀ )</div>
-      <p>Jᵢ is the Jacobian of link i's centre of mass. Integration is classic RK4 with 5 ms sub-steps. With one link the accelerations match Gymnasium's CartPole-v1 formulas to 1e-10, and energy is conserved to 1e-4 over 3 s with no forcing (test_physics.py).</p>
+      <p>Coordinates are the cart position and the absolute angle of each link from vertical. Every link is a uniform rod. The equations of motion come straight from d'Alembert's principle and are solved numerically each step, so the same code handles one link or ten:</p>
+      <div class="eq">M(q)·q̈ = u·e₀ + Σᵢ Jᵢᵀ( Fᵍʳᵃᵛᵢ − mᵢ·J̇ᵢ·q̇ ) + f_diss(q, q̇)<br>M(q) = m₀e₀e₀ᵀ + Σᵢ ( mᵢ JᵢᵀJᵢ + Iᵢ eᵢeᵢᵀ )</div>
+      <p>Jᵢ is the Jacobian of link i's centre of mass. Integration is classic RK4 with 5 ms sub-steps. With one link and dissipation off, the accelerations match Gymnasium's CartPole-v1 formulas to 1e-10, and energy is conserved to 1e-4 over 3 s (test_physics.py).</p>
+      <p><b>Dissipation, f_diss.</b> The realistic preset (the default) adds what a real stick in a real room feels:</p>
+      <ul>
+        <li><b>Air drag on every link</b>: pressure drag on a cylinder in cross-flow, ½ρ·C_d·d·|vₙ|vₙ per metre, integrated along the rod with 3-point Gauss–Legendre quadrature because the tip moves faster than the hinge. ρ = 1.225 kg/m³, C_d = 1.1, d = 2 cm.</li>
+        <li><b>Air drag on the cart</b>: ½ρ·(C_d A)·|ẋ|ẋ with C_d A = 0.01 m².</li>
+        <li><b>Bearing friction in each hinge</b>: viscous 0.002 N·m·s/rad (the value Glück et al. measured on their triple pendulum) plus 1e-4 N·m Coulomb, acting on the relative joint velocity with the reaction on the link below.</li>
+        <li><b>Rail friction on the cart</b>: Coulomb μ = 0.01 of the total weight, plus optional viscous drag.</li>
+      </ul>
+      <p>Coulomb sign() terms are smoothed with tanh(v/1 cm·s⁻¹) so RK4 stays well-behaved. Tests check the rod-drag torque against the closed form −k·ω|ω|·l⁴/4 and that mechanical energy never increases. A 1 m, 100 g stick swinging freely halves its amplitude in about 7 s; pass <code>physics="ideal"</code> for the frictionless textbook model.</p>
     </div>
     <div class="panel">
       <h3>The task (env.py)</h3>
@@ -138,36 +146,39 @@ a{color:var(--accent-ink)}
     <div class="panel">
       <h3>Algorithm choice</h3>
       <ul>
-        <li><b>PPO</b> is the default for these tasks: simple, stable, cheap per step, and the zoo's tuned configs solve CartPole in 1e5 steps and the MuJoCo double pendulum in about 1e6. It is what we run first.</li>
-        <li><b>SAC / TD3</b> are far more sample-efficient (they reuse every transition many times) and often solve InvertedDoublePendulum in a few 10⁴ environment steps, at the price of slower wall-clock per step. Use SAC when simulation is expensive, PPO when it is cheap.</li>
-        <li><b>DQN</b> only fits the discrete-action CartPole; it does not scale to the force control a multi-joint stick needs.</li>
+        <li><b>PPO</b> is the standard first choice: the rl-baselines3-zoo solves CartPole with it in 1e5 steps and MuJoCo's InvertedDoublePendulum in about 1e6, with observation normalisation. It parallelises well and is what we run here.</li>
+        <li><b>SAC, TD3, TQC</b> are the state of the art for single-process continuous control (Stable-Baselines3's own guidance). The SAC expert on InvertedDoublePendulum-v5 scores 9356 ± 0.06, while PPO runs on the same task span 1507 to 9358 across seeds. Every real-hardware triple and quadruple pendulum result uses an off-policy method (TQC, actor-critic with virtual experience replay).</li>
+        <li><b>DQN</b> only fits the discrete-action CartPole and does not scale to the force control a multi-joint stick needs.</li>
+        <li><b>Budgets seen in the literature</b>: CartPole 5e4–1e5; single continuous pendulum ≤ 3e5; double pendulum 5e5 (SAC) to 2e6 (PPO); cart-pole swing-up with domain randomisation 3e6. Plan on 1e6–3e6 more per extra link.</li>
       </ul>
     </div>
     <div class="panel">
       <h3>Why more joints is so much harder</h3>
       <ul>
-        <li>The upright equilibrium of an N-link pendulum has N unstable eigenvalues, and the fastest one grows with the link count and shrinks with link length. Short, light upper links diverge in well under 100 ms.</li>
-        <li>A single force on the cart must stabilise all N angles at once (underactuated by N), so the controller needs both precise velocity estimates and high control bandwidth. Our recipes raise the force limit and the control authority with N.</li>
-        <li>The reward landscape is sparse early on: a random policy fails within a few steps, so the agent first has to learn to survive at all before it can learn to centre the cart.</li>
+        <li>The upright equilibrium of an N-link pendulum has N unstable modes. With CartPole-like parameters the fastest one doubles a disturbance every 149 ms for 1 link, 83 ms for 2, 62 ms for 3, 51 ms for 4.</li>
+        <li>Åström &amp; Murray's rule for an unstable pole p is a loop crossover above ~1.7p, so the required control bandwidth climbs from about 8 rad/s (1 link) to 19 rad/s (3 links). Shorter, lighter links push it higher still; a 20 Hz controller is comfortable for two links and marginal for three.</li>
+        <li>The region of attraction shrinks with N ("larger n needs smaller perturbations to fall"), so random exploration ends episodes almost immediately and the alive bonus has to carry early learning. Bounded cart force and a finite track cap what is recoverable at all.</li>
+        <li>Absolute link angles simulate faster and more accurately than relative joint angles (Serkibayev et al. 2025); we use absolute angles.</li>
       </ul>
     </div>
     <div class="panel">
       <h3>Practices we adopted</h3>
       <ul>
-        <li><b>Normalise observations and rewards</b> (VecNormalize), and save the statistics with the model. Angular velocities of upper links can be 100× larger than cart position.</li>
-        <li><b>Alive bonus plus small quadratic costs</b>, the same shape as MuJoCo's InvertedDoublePendulum reward, rather than a pure quadratic cost that makes falling early attractive.</li>
-        <li><b>Termination on lean angle</b> keeps episodes short while the agent is bad, which concentrates learning where it matters.</li>
-        <li><b>RK4 with sub-steps</b>: semi-implicit Euler at 20 ms, as in CartPole, is fine for one link but visibly wrong for three.</li>
-        <li><b>Deterministic evaluation with a stop threshold</b> so a run ends when the stick is actually balanced, not after a fixed budget.</li>
+        <li><b>Normalise observations and rewards</b> (VecNormalize) and save the statistics with the model; every zoo continuous-control entry does this.</li>
+        <li><b>Alive bonus plus small quadratic costs</b>, the shape of MuJoCo's InvertedDoublePendulum reward, so the return stays monotone in survival time. Pure quadratic costs make early failure attractive.</li>
+        <li><b>Truncate, don't terminate, at the time limit</b>, and pay no bonus on the failing step (the Gymnasium v5 bug fix).</li>
+        <li><b>RK4 with 5 ms sub-steps</b>: the MuJoCo reference envs integrate with RK4 at 10 ms and frame-skip 2–5; explicit Euler at 20 ms gains energy on jointed sticks.</li>
+        <li><b>Symmetric [−1, 1] actions</b> scaled to a force inside the env, a small u² penalty, and deterministic evaluation with a stop threshold.</li>
+        <li><b>Realistic dissipation</b>: air drag and bearing friction, with the hinge damping taken from measured hardware, so a policy is not trained on a vacuum.</li>
       </ul>
     </div>
     <div class="panel">
       <h3>Next steps if you want to go further</h3>
       <ul>
-        <li><b>Swing-up</b>: start the links hanging down, feed sin/cos of the angles instead of raw angles, and shape the reward on tip height (the MuJoCo recipe).</li>
-        <li><b>Curriculum</b>: widen the initial perturbation or shrink the force limit over training instead of changing the number of links; the observation size changes with N so weights cannot be reused directly.</li>
-        <li><b>Domain randomisation</b> of masses, lengths and friction if the policy should ever drive a real cart.</li>
-        <li><b>MuJoCo</b>: swap the environment for <code>InvertedDoublePendulum-v5</code> to compare against published scores (solved at about 9,100 of 9,350).</li>
+        <li><b>Swing-up</b>: start the links hanging down, feed sin/cos of the angles, use dm_control's product-of-tolerances reward or the MuJoCo tip-height reward, no failure termination.</li>
+        <li><b>Curriculum</b>: no paper grows one policy from 1 to N joints (the observation size changes). What works is task curricula (balance → swing-up), parameter curricula (ramp initial noise or drag), and growing a short, light top link toward its target size.</li>
+        <li><b>Domain randomisation</b> of the parameters the loop is most sensitive to (masses, hinge damping, actuator gain) with a linear ramp, plus an action low-pass filter, if the policy should ever drive a real cart.</li>
+        <li><b>Compare with MuJoCo</b>: <code>InvertedDoublePendulum-v5</code> or dm_control's <code>three_poles</code> for published baselines.</li>
       </ul>
     </div>
   </div>

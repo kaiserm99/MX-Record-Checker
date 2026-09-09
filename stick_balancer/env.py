@@ -9,8 +9,11 @@ Episode ends (terminated) when the cart leaves the track or any link tilts
 more than `angle_limit`; it is truncated after `max_episode_steps`.
 
 N = 1 is the familiar CartPole; N = 2 is the double, N = 3 the triple inverted
-pendulum, and so on.  Everything else (masses, lengths, time step, limits)
-is a constructor argument so experiments are explicit and reproducible.
+pendulum, and so on.  By default the simulation is *realistic*: air drag on the
+links and the cart, viscous + Coulomb friction in the hinges and on the rail
+(see physics.py).  Pass physics="ideal" for the frictionless textbook model.
+Everything else (masses, lengths, time step, limits) is a constructor argument
+so experiments are explicit and reproducible.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from physics import CartPendulumParams, joint_positions, simulate
+from physics import ideal, joint_positions, realistic, simulate
 
 
 class StickBalanceEnv(gym.Env):
@@ -38,8 +41,8 @@ class StickBalanceEnv(gym.Env):
         angle_limit: float = 0.35,      # rad; fail when any link leans more than this (~20 deg)
         init_noise: float = 0.05,       # uniform noise on the initial state
         max_episode_steps: int = 1000,  # 20 simulated seconds
-        cart_damping: float = 0.0,
-        joint_damping: float = 0.0,
+        physics: str = "realistic",     # "realistic" (air drag + bearing/rail friction) or "ideal" (textbook CartPole)
+        physics_overrides: dict | None = None,  # e.g. {"link_diameter": 0.03, "cart_coulomb": 0.02}
         link_masses=None,
         link_lengths=None,
         position_cost: float = 0.05,
@@ -47,13 +50,14 @@ class StickBalanceEnv(gym.Env):
         action_cost: float = 0.001,
     ) -> None:
         super().__init__()
-        self.params = CartPendulumParams(
+        preset = {"realistic": realistic, "ideal": ideal}[physics]
+        self.params = preset(
             n_links=n_links,
             link_masses=link_masses,
             link_lengths=link_lengths,
-            cart_damping=cart_damping,
-            joint_damping=joint_damping,
+            **(physics_overrides or {}),
         )
+        self.physics = physics
         self.n_links = n_links
         self.max_force = max_force
         self.control_dt = control_dt

@@ -6,8 +6,8 @@ small, explicit and readable:
 
 | File | Purpose |
 |---|---|
-| `physics.py` | N-link cart-pendulum dynamics in mass-matrix form `M(q) q'' = f(q, q', u)`, RK4 integration, energy and geometry helpers. ~150 lines, pure NumPy. |
-| `test_physics.py` | Proves the derivation: matches Gymnasium's CartPole-v1 equations to 1e-10 for one link, and RK4 energy drift shrinks like h^4 for 1-4 links. |
+| `physics.py` | N-link cart-pendulum dynamics in mass-matrix form `M(q) q'' = f(q, q', u)`, with realistic air drag and bearing/rail friction, RK4 integration, energy and geometry helpers. Pure NumPy. |
+| `test_physics.py` | Proves the derivation: matches Gymnasium's CartPole-v1 equations to 1e-10 for one link, RK4 energy drift shrinks like h^4 for 1-4 links, rod drag torque matches its closed form, and energy never increases with dissipation on. |
 | `env.py` | The Gymnasium environment (observation, action, reward, termination). |
 | `recipes.py` | Every tuning number per number of links, in one place, with the reasoning. |
 | `train.py` | Trains PPO (or SAC) with Stable-Baselines3: normalisation, parallel envs, periodic evaluation, early stop when solved. |
@@ -27,7 +27,7 @@ python evaluate.py --links 2 --export runs/ppo_2links/trajectory.json
 python make_report.py && open report.html
 ```
 
-Change the physics or the reward in `env.py`, the hyperparameters in `recipes.py`.
+Change the physics in `physics.py`, the reward in `env.py`, the hyperparameters in `recipes.py`.
 Add `--algo sac` for Soft Actor-Critic (more sample-efficient, slower per step).
 
 ## How it works, in one paragraph each
@@ -40,6 +40,16 @@ m_i Jdot_i q') - damping`, with the mass matrix `M = m0 e0 e0^T + sum_i (m_i J_i
 trivial to write down because the position of that centre is a sum of `l_j sin/cos
 theta_j` terms.  We solve the linear system numerically every sub-step, so the same
 code handles any number of links.  Integration is classic RK4 with 5 ms sub-steps.
+
+**Realism.** By default the stick lives in air and turns on real bearings:
+quadratic air drag on every link (cylinder cross-flow, C_d 1.1, 2 cm dowel,
+integrated along the rod with Gauss-Legendre quadrature), air drag on the cart,
+viscous + Coulomb bearing friction in each hinge (0.002 N m s/rad, the value
+measured on TU Wien's triple pendulum, plus 1e-4 N m dry friction) and Coulomb
+rail friction on the cart (mu = 0.01).  Coulomb terms are tanh-smoothed so RK4
+stays smooth.  Every coefficient is a field of `CartPendulumParams`; use
+`physics="ideal"` in the env for the frictionless textbook model, or
+`physics_overrides={"link_diameter": 0.03}` to tweak one thing.
 
 **Task.** The agent sees `[x, x', theta_1..N, theta'_1..N]` and outputs one number in
 [-1, 1], scaled to a horizontal force on the cart.  Reward is 1 per step alive minus

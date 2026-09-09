@@ -41,8 +41,33 @@ j < i, a_i for j == i and 0 for j > i.  Differentiating once more in time
 gives  Jdot_i qd = sum_j L_ij thetadot_j**2 ( -sin(theta_j), -cos(theta_j) ).
 
 Solving the (N+1)x(N+1) linear system gives the accelerations; we integrate
-them with classic 4th-order Runge-Kutta.  With N = 1 this reproduces the
-Gymnasium CartPole-v1 equations exactly (see test_physics.py).
+them with classic 4th-order Runge-Kutta.  With N = 1 and dissipation switched
+off this reproduces the Gymnasium CartPole-v1 equations exactly (see
+test_physics.py).
+
+Dissipation (the "realistic" part)
+----------------------------------
+Real sticks live in air and turn on real bearings, so the generalised force
+vector also contains:
+
+  * Aerodynamic drag on every link.  A rod in cross-flow feels a pressure drag
+    per unit length  f = -1/2 * rho * C_d * d * |v_n| * v_n  where v_n is the
+    velocity component perpendicular to the rod (C_d ~ 1.1 for a cylinder,
+    d the rod diameter).  Because v_n varies along the rod (the tip moves
+    faster than the hinge) we integrate J(s)^T f(s) along the rod with
+    3-point Gauss-Legendre quadrature.  Skin friction along the rod is
+    negligible and ignored.
+  * Aerodynamic drag on the cart:  -1/2 * rho * (C_d A) * |x'| * x'.
+  * Bearing friction in every hinge: viscous  -b * omega_rel  plus Coulomb
+    -tau_c * sign(omega_rel), acting on the relative angular velocity and
+    with the equal-and-opposite reaction on the link below.
+  * Rail friction on the cart: viscous  -c * x'  plus Coulomb  -mu * m g *
+    sign(x')  with the normal force approximated by the total weight.
+
+The sign() in Coulomb friction is smoothed to tanh(v / v_eps) so the ODE stays
+smooth for RK4 (the standard trick; v_eps = 1 cm/s or 0.01 rad/s here).
+Every dissipative term can be zeroed individually; `IDEAL` and `REALISTIC`
+presets are provided.
 """
 
 from __future__ import annotations
@@ -62,9 +87,18 @@ class CartPendulumParams:
     cart_mass: float = 1.0
     link_masses: np.ndarray = field(default=None)   # kg, shape (N,)
     link_lengths: np.ndarray = field(default=None)  # m,  shape (N,)
-    cart_damping: float = 0.0    # viscous friction on the cart (N s/m)
-    joint_damping: float = 0.0   # viscous friction on each joint (N m s/rad)
     gravity: float = GRAVITY
+
+    # --- dissipation (all zero => frictionless stick in a vacuum) ---
+    air_density: float = 1.225       # kg/m^3, sea level
+    link_diameter: float = 0.02      # m; a 2 cm dowel
+    link_drag_coeff: float = 1.1     # C_d of a cylinder in cross-flow (Re ~ 1e3..1e5)
+    cart_drag_area: float = 0.01     # C_d * A of the cart (m^2), ~ a 10 cm box
+    cart_damping: float = 0.0        # viscous rail friction (N s/m)
+    cart_coulomb: float = 0.01       # dry rail friction coefficient mu (dimensionless)
+    joint_damping: float = 0.002     # viscous bearing friction per hinge (N m s/rad); Glueck et al. 2013 measured 0.002 on their triple pendulum
+    joint_coulomb: float = 0.0001    # dry bearing friction per hinge (N m); a small sealed ball bearing
+    coulomb_smoothing: float = 0.01  # v_eps for the tanh() approximation of sign()
 
     def __post_init__(self) -> None:
         n = self.n_links
@@ -135,15 +169,73 @@ def mass_matrix_and_forces(
         gravity_force = np.array([0.0, -m * p.gravity])
         f += J.T @ (gravity_force - m * Jdot_qd)
 
-    # Viscous damping in each hinge acts on the *relative* joint velocity.
-    if p.joint_damping:
-        rel = np.diff(np.concatenate(([0.0], thetad)))  # theta_i' - theta_{i-1}'
-        torque = -p.joint_damping * rel                  # torque on link i from hinge i
-        # Newton's third law: hinge i also pushes back on link i-1.
-        f[1:] += torque
-        f[1:-1] -= torque[1:]
-
+    f += dissipative_forces(q, qd, p)
     return M, f
+
+
+# 3-point Gauss-Legendre nodes/weights on [0, 1] for integrating along a rod.
+_GL_NODES = 0.5 * (1.0 + np.array([-np.sqrt(3.0 / 5.0), 0.0, np.sqrt(3.0 / 5.0)]))
+_GL_WEIGHTS = 0.5 * np.array([5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0])
+
+
+def dissipative_forces(q: np.ndarray, qd: np.ndarray, p: CartPendulumParams) -> np.ndarray:
+    """Generalised forces from air drag and bearing/rail friction (all <= 0 power)."""
+    n = p.n_links
+    theta, thetad = q[1:], qd[1:]
+    sin, cos = np.sin(theta), np.cos(theta)
+    f = np.zeros(n + 1)
+    smooth_sign = lambda v: np.tanh(v / p.coulomb_smoothing)  # noqa: E731
+
+    # ---- cart: rail friction (viscous + Coulomb) and air drag -------------
+    xd = qd[0]
+    weight = (p.cart_mass + p.link_masses.sum()) * p.gravity
+    f[0] -= p.cart_damping * xd
+    f[0] -= p.cart_coulomb * weight * smooth_sign(xd)
+    f[0] -= 0.5 * p.air_density * p.cart_drag_area * abs(xd) * xd
+
+    # ---- hinges: bearing friction on the relative angular velocity ---------
+    rel = np.diff(np.concatenate(([0.0], thetad)))           # omega_i - omega_{i-1}
+    torque = -p.joint_damping * rel - p.joint_coulomb * smooth_sign(rel)
+    f[1:] += torque                                           # on link i ...
+    f[1:-1] -= torque[1:]                                     # ... and its reaction on link i-1
+
+    # ---- links: quadratic air drag integrated along each rod --------------
+    k = 0.5 * p.air_density * p.link_drag_coeff * p.link_diameter   # drag per length per v^2
+    if k == 0.0:
+        return f
+    # velocity of the lower hinge of link i (starts at the cart)
+    hinge_v = np.array([xd, 0.0])
+    for i in range(n):
+        li = p.link_lengths[i]
+        normal = np.array([cos[i], -sin[i]])                  # unit vector perpendicular to rod i
+        for node, w in zip(_GL_NODES, _GL_WEIGHTS):
+            s_ = node * li                                    # distance along rod
+            v = hinge_v + s_ * thetad[i] * normal             # velocity of that point
+            v_n = v @ normal                                  # cross-flow component
+            force = -k * abs(v_n) * v_n * normal              # drag force per unit length
+            # Jacobian of that point: d/dx = (1,0); d/dtheta_j = L_j * normal_j, L_j = l_j (j<i), s (j=i)
+            J = np.zeros((2, n + 1))
+            J[0, 0] = 1.0
+            J[0, 1:i + 1] = p.link_lengths[:i] * cos[:i]
+            J[1, 1:i + 1] = -p.link_lengths[:i] * sin[:i]
+            J[0, i + 1] = s_ * cos[i]
+            J[1, i + 1] = -s_ * sin[i]
+            f += w * li * (J.T @ force)
+        hinge_v = hinge_v + li * thetad[i] * normal           # tip of link i = hinge of link i+1
+    return f
+
+
+def ideal(**kwargs) -> CartPendulumParams:
+    """Frictionless stick in a vacuum: the textbook CartPole."""
+    return CartPendulumParams(
+        air_density=0.0, cart_drag_area=0.0, cart_damping=0.0, cart_coulomb=0.0,
+        joint_damping=0.0, joint_coulomb=0.0, **kwargs,
+    )
+
+
+def realistic(**kwargs) -> CartPendulumParams:
+    """Air at sea level, a 2 cm dowel, ball-bearing hinges and a linear rail (the defaults)."""
+    return CartPendulumParams(**kwargs)
 
 
 def accelerations(q: np.ndarray, qd: np.ndarray, u: float, p: CartPendulumParams) -> np.ndarray:
