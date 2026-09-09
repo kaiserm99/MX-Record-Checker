@@ -16,6 +16,12 @@ Where do these numbers come from?
     log_std_init -3, net [400, 300]).
   * Env: force authority and the allowed lean grow with the number of links because a
     longer, jointed stick has faster unstable modes and needs more control bandwidth.
+  * Shake phase: after the stick is balanced we continue training with random pushes
+    (see env.py).  Agents that never saw a push survive 0.25 N shoves about 75% of the
+    time and 0.5 N almost never, so the push strength is set where the balanced agent
+    fails and has to learn to recover: 1.0 N for one link, less for more links because
+    the same impulse tips a jointed stick further.  Magnitudes are random in
+    [0.3, 1] x shake_force so every episode mixes easy and hard pushes.
 Change numbers here, not in train.py.
 """
 
@@ -45,18 +51,24 @@ RECIPES: dict[int, dict] = {
     1: {  # classic CartPole: trivially easy, a minute on a laptop
         "env": dict(max_force=10.0, angle_limit=0.35),
         "total_timesteps": 200_000,
+        "shake": dict(shake_force=1.0, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake_timesteps": 600_000,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=64, n_steps=512, batch=256, gamma=0.99, lam=0.95, epochs=10),
         "sac": _sac(net=256),
     },
     2: {  # double inverted pendulum: needs a few hundred thousand to a couple million steps
         "env": dict(max_force=20.0, angle_limit=0.4),
         "total_timesteps": 2_000_000,
+        "shake": dict(shake_force=0.75, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake_timesteps": 1_000_000,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=128, n_steps=512, batch=256, gamma=0.99, lam=0.95, epochs=10),
         "sac": _sac(net=400),
     },
     3: {  # triple inverted pendulum: genuinely hard, plan for several million steps
         "env": dict(max_force=30.0, angle_limit=0.5),
         "total_timesteps": 5_000_000,
+        "shake": dict(shake_force=0.5, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake_timesteps": 1_500_000,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=256, n_steps=1024, batch=512, gamma=0.99, lam=0.95, epochs=10),
         "sac": _sac(net=400),
     },
@@ -66,3 +78,9 @@ RECIPES: dict[int, dict] = {
 def recipe(n_links: int) -> dict:
     """Recipes for more links than we tuned fall back to the largest one."""
     return RECIPES[min(n_links, max(RECIPES))]
+
+
+def env_kwargs_for(n_links: int, phase: str = "balance") -> dict:
+    """Environment arguments for a training phase: 'balance' (no pushes) or 'shake'."""
+    r = recipe(n_links)
+    return {**r["env"], **(r["shake"] if phase == "shake" else {})}

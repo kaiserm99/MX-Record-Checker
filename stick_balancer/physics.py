@@ -128,10 +128,32 @@ class CartPendulumParams:
         return float(self.link_lengths.sum())
 
 
+def point_jacobian(q: np.ndarray, link: int, fraction: float, p: CartPendulumParams) -> np.ndarray:
+    """Jacobian (2 x N+1) of a point on `link` (0-based; -1 = the cart) at
+    `fraction` of the way from its lower hinge to its tip.  A force F applied
+    there enters the equations of motion as the generalised force J^T F."""
+    n = p.n_links
+    J = np.zeros((2, n + 1))
+    J[0, 0] = 1.0
+    if link < 0:
+        return J
+    theta = q[1:]
+    J[0, 1:link + 1] = p.link_lengths[:link] * np.cos(theta[:link])
+    J[1, 1:link + 1] = -p.link_lengths[:link] * np.sin(theta[:link])
+    s_ = fraction * p.link_lengths[link]
+    J[0, link + 1] = s_ * np.cos(theta[link])
+    J[1, link + 1] = -s_ * np.sin(theta[link])
+    return J
+
+
 def mass_matrix_and_forces(
-    q: np.ndarray, qd: np.ndarray, u: float, p: CartPendulumParams
+    q: np.ndarray, qd: np.ndarray, u: float, p: CartPendulumParams, external=()
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return M(q) and f(q, qd, u) such that M qdd = f."""
+    """Return M(q) and f(q, qd, u) such that M qdd = f.
+
+    `external` is an optional sequence of (link, fraction, fx, fy) pushes:
+    a force (fx, fy) in newtons applied at `fraction` along `link`
+    (link -1 = the cart).  Used for random disturbances ("shakes")."""
     n = p.n_links
     theta = q[1:]
     thetad = qd[1:]
@@ -170,6 +192,8 @@ def mass_matrix_and_forces(
         f += J.T @ (gravity_force - m * Jdot_qd)
 
     f += dissipative_forces(q, qd, p)
+    for link, fraction, fx, fy in external:
+        f += point_jacobian(q, link, fraction, p).T @ np.array([fx, fy])
     return M, f
 
 
@@ -238,19 +262,21 @@ def realistic(**kwargs) -> CartPendulumParams:
     return CartPendulumParams(**kwargs)
 
 
-def accelerations(q: np.ndarray, qd: np.ndarray, u: float, p: CartPendulumParams) -> np.ndarray:
-    M, f = mass_matrix_and_forces(q, qd, u, p)
+def accelerations(
+    q: np.ndarray, qd: np.ndarray, u: float, p: CartPendulumParams, external=()
+) -> np.ndarray:
+    M, f = mass_matrix_and_forces(q, qd, u, p, external)
     return np.linalg.solve(M, f)
 
 
 def rk4_step(
-    q: np.ndarray, qd: np.ndarray, u: float, dt: float, p: CartPendulumParams
+    q: np.ndarray, qd: np.ndarray, u: float, dt: float, p: CartPendulumParams, external=()
 ) -> tuple[np.ndarray, np.ndarray]:
     """One classic Runge-Kutta 4 step of the second-order ODE (u held constant)."""
 
     def deriv(state: np.ndarray) -> np.ndarray:
         n1 = len(q)
-        return np.concatenate((state[n1:], accelerations(state[:n1], state[n1:], u, p)))
+        return np.concatenate((state[n1:], accelerations(state[:n1], state[n1:], u, p, external)))
 
     s0 = np.concatenate((q, qd))
     k1 = deriv(s0)
@@ -263,12 +289,12 @@ def rk4_step(
 
 
 def simulate(
-    q: np.ndarray, qd: np.ndarray, u: float, dt: float, substeps: int, p: CartPendulumParams
+    q: np.ndarray, qd: np.ndarray, u: float, dt: float, substeps: int, p: CartPendulumParams, external=()
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Advance the system by `dt` using `substeps` RK4 sub-steps with a constant force."""
+    """Advance the system by `dt` using `substeps` RK4 sub-steps with constant forces."""
     h = dt / substeps
     for _ in range(substeps):
-        q, qd = rk4_step(q, qd, u, h, p)
+        q, qd = rk4_step(q, qd, u, h, p, external)
     return q, qd
 
 

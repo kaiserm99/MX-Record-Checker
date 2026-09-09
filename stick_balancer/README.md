@@ -13,7 +13,7 @@ small, explicit and readable:
 | `train.py` | Trains PPO (or SAC) with Stable-Baselines3: normalisation, parallel envs, periodic evaluation, early stop when solved. |
 | `evaluate.py` | Runs a trained policy, prints returns, exports a trajectory for the viewer. |
 | `make_report.py` + `report_template.html` | Builds `report.html`: an animation of each trained agent, learning curves, the maths, and the research notes. |
-| `run_all.sh` | Trains and evaluates the whole ladder 1 -> 2 -> 3 links. |
+| `run_all.sh` | Trains and evaluates the whole ladder 1 -> 2 -> 3 links, balance phase then push phase. |
 
 ## Quick start
 
@@ -23,7 +23,9 @@ python test_physics.py                     # sanity-check the simulator
 python train.py --links 1                  # ~1 minute on a laptop CPU
 python train.py --links 2                  # double inverted pendulum
 python train.py --links 3 --timesteps 5e6  # triple inverted pendulum
+python train.py --links 2 --phase shake      # continue with random pushes
 python evaluate.py --links 2 --export runs/ppo_2links/trajectory.json
+python evaluate.py --links 2 --phase shake --export runs/ppo_2links_shake/trajectory.json
 python make_report.py && open report.html
 ```
 
@@ -55,6 +57,17 @@ stays smooth.  Every coefficient is a field of `CartPendulumParams`; use
 [-1, 1], scaled to a horizontal force on the cart.  Reward is 1 per step alive minus
 tiny quadratic penalties on cart offset, lean, and force (max 1000 per 20 s episode).
 The episode ends when the cart leaves +/-2.4 m or a link leans past the limit.
+
+**Pushes (phase two).** Once an agent balances, training continues from its
+weights with random disturbances switched on: whenever the stick has been calm
+for a while, a force of random strength (up to the recipe's `shake_force`) and
+direction hits a random point of a random link, or the cart, for 0.1 s, about
+every 3 s.  The agent is not told about the push and has to recover from what it
+feels in the state.  The viewer draws pushes as orange arrows.  Agents that never
+saw a push survive 0.25 N shoves about 75% of the time and 0.5 N almost never;
+after the push phase they should shrug off 1 N (one link) or 0.5-0.75 N (two and
+three links).  `python train.py --links 2 --phase shake` runs it;
+`python evaluate.py --links 2 --phase shake` tests it.
 
 **Learning.** PPO from Stable-Baselines3 with `VecNormalize` (observation and reward
 scaling), 4 subprocess environments, linearly decaying learning rate and clip range,

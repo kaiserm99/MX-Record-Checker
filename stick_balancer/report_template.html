@@ -80,7 +80,7 @@ a{color:var(--accent-ink)}
 <header>
   <div class="eyebrow">Reinforcement learning · cart with an N-link stick · pure NumPy physics + Stable-Baselines3</div>
   <h1>Stick Balancer Lab</h1>
-  <p class="lede">An agent that teaches itself to balance a stick on a cart, then a stick with one joint, then two. Same code, one number changes.</p>
+  <p class="lede">An agent that teaches itself to balance a stick on a cart, then a stick with one joint, then two, in air, on real bearings, and then to survive being shoved. Same code, one number changes.</p>
   <div id="summary" class="tablewrap"></div>
 </header>
 
@@ -96,7 +96,7 @@ a{color:var(--accent-ink)}
       <span id="tlabel" class="mono"></span>
     </div>
     <div class="readout" id="readout"></div>
-    <p class="cap" style="color:var(--muted);font-size:.85rem">Deterministic policy, one 20-second episode (1000 control steps at 50 Hz). The cart is 1 kg, the whole stick 0.1 kg and 1 m regardless of how many joints it has, and it moves through air on real bearings (see the physics below). Fails if the cart leaves ±2.4 m or any link leans past its limit.</p>
+    <p class="cap" style="color:var(--muted);font-size:.85rem">Deterministic policy, one 20-second episode (1000 control steps at 50 Hz). The cart is 1 kg, the whole stick 0.1 kg and 1 m regardless of how many joints it has, and it moves through air on real bearings (see the physics below). Fails if the cart leaves ±2.4 m or any link leans past its limit. In the "+ pushes" episodes the orange arrows are random shoves the agent has to recover from.</p>
   </div>
 </section>
 
@@ -131,6 +131,7 @@ a{color:var(--accent-ink)}
       <p><b>Reward</b> · 1 per step, minus 0.05·(x/x_max)², minus 0.05·mean(θᵢ/θ_max)², minus 0.001·a². Zero on the step that fails.</p>
       <p><b>Episode</b> · ends when the cart leaves the track or a link leans past θ_max; truncated at 1000 steps.</p>
       <p><b>Start</b> · every coordinate and velocity uniform in ±0.05, like CartPole-v1.</p>
+      <p><b>Pushes</b> · in the second training phase, once the stick has been calm for a while, a random force (up to the recipe's push strength, random direction within 30° of horizontal) hits a random point of a random link or the cart for 0.1 s. Pushes recur about every 3 s (Poisson). The agent is not told; it has to feel it in the state and recover.</p>
     </div>
   </div>
   <div class="panel">
@@ -221,19 +222,19 @@ const fmt = n => n.toLocaleString("en-US");
     const traj = r.trajectory;
     const solved = best !== null && best >= 980;
     const status = solved ? '<span class="pill good"><i></i>balanced</span>' : (traj ? '<span class="pill warn"><i></i>partial</span>' : '<span class="pill warn"><i></i>training</span>');
-    return `<tr><td><b>${cfg.links} link${cfg.links>1?'s':''}</b> · ${(cfg.algo||'').toUpperCase()}</td><td>${status}</td><td class="num">${best===null?'–':best.toFixed(0)}</td><td class="num">${traj?traj.return.toFixed(0):'–'}</td><td class="num">${fmt(last)}</td></tr>`;
+    return `<tr><td><b>${cfg.links} link${cfg.links>1?'s':''}${cfg.phase==='shake'?' + pushes':''}</b> · ${(cfg.algo||'').toUpperCase()}</td><td>${status}</td><td class="num">${best===null?'–':best.toFixed(0)}</td><td class="num">${traj?traj.return.toFixed(0):'–'}</td><td class="num">${fmt(last)}</td></tr>`;
   }).join('');
   document.getElementById('summary').innerHTML = `<table><tr><th>Task</th><th>Status</th><th class="num">Best eval return</th><th class="num">Episode shown</th><th class="num">Steps trained</th></tr>${rows}</table>`;
 })();
 
 /* ---------- recipe table ---------- */
 (function(){
-  const rows = RUNS.map(r => {
-    const rc = (r.config||{}).recipe || {}, e = rc.env || {}, p = rc.ppo || {};
+  const rows = RUNS.filter(r => (r.config||{}).phase !== 'shake').map(r => {
+    const rc = (r.config||{}).recipe || {}, e = rc.env || {}, p = rc.ppo || {}, sh = rc.shake || {};
     const na = p.policy_kwargs && p.policy_kwargs.net_arch ? p.policy_kwargs.net_arch.pi.join('×') : '';
-    return `<tr><td>${r.config.links}</td><td class="num">${e.max_force}</td><td class="num">${e.angle_limit}</td><td class="num">${fmt(rc.total_timesteps||0)}</td><td class="num">${p.n_steps}</td><td class="num">${p.batch_size}</td><td class="num">${p.gamma}</td><td class="num">${p.gae_lambda}</td><td class="num">${na}</td></tr>`;
+    return `<tr><td>${r.config.links}</td><td class="num">${e.max_force}</td><td class="num">${e.angle_limit}</td><td class="num">${fmt(rc.total_timesteps||0)}</td><td class="num">${p.n_steps}</td><td class="num">${p.batch_size}</td><td class="num">${p.gamma}</td><td class="num">${p.gae_lambda}</td><td class="num">${na}</td><td class="num">${sh.shake_force ?? '–'}</td></tr>`;
   }).join('');
-  document.getElementById('recipes').innerHTML = `<table><tr><th>Links</th><th class="num">Max force (N)</th><th class="num">Lean limit (rad)</th><th class="num">Budget (steps)</th><th class="num">n_steps</th><th class="num">batch</th><th class="num">γ</th><th class="num">λ</th><th class="num">Net</th></tr>${rows}</table>`;
+  document.getElementById('recipes').innerHTML = `<table><tr><th>Links</th><th class="num">Max force (N)</th><th class="num">Lean limit (rad)</th><th class="num">Budget (steps)</th><th class="num">n_steps</th><th class="num">batch</th><th class="num">γ</th><th class="num">λ</th><th class="num">Net</th><th class="num">Push (N)</th></tr>${rows}</table>`;
 })();
 
 /* ---------- sources ---------- */
@@ -262,7 +263,7 @@ const fmt = n => n.toLocaleString("en-US");
       ev.forEach(p=>{ g+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3" fill="var(--series-2)" stroke="var(--panel)" stroke-width="1.5"/>`; }); }
     g += `<line id="xh" x1="0" x2="0" y1="${mt}" y2="${H-mb}" stroke="var(--muted)" opacity="0" />`;
     const div = document.createElement('div'); div.className='chart';
-    div.innerHTML = `<h3>${r.config.links} link${r.config.links>1?'s':''}</h3><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Learning curve for ${r.config.links} links">${g}</svg><div class="cap">episode return vs environment steps · dashed line is the 980 stop threshold</div>`;
+    div.innerHTML = `<h3>${r.config.links} link${r.config.links>1?'s':''}${r.config.phase==='shake'?' + pushes':''}</h3><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Learning curve for ${r.config.links} links">${g}</svg><div class="cap">episode return vs environment steps · dashed line is the 980 stop threshold</div>`;
     host.appendChild(div);
     const svg = div.querySelector('svg'), xh = svg.querySelector('#xh');
     svg.addEventListener('mousemove', e => {
@@ -287,7 +288,8 @@ const fmt = n => n.toLocaleString("en-US");
         scrub = document.getElementById('scrub'), tlabel = document.getElementById('tlabel'), readout = document.getElementById('readout');
   if(!runs.length){ document.getElementById('anim').innerHTML = '<h2>Watch the trained agents</h2><p>No trajectories yet: run <code>train.py</code> then <code>evaluate.py --export</code>.</p>'; return; }
   let cur = 0, frame = 0, playing = !matchMedia('(prefers-reduced-motion: reduce)').matches, acc = 0, last = performance.now();
-  runs.forEach((r,i)=>{ const b=document.createElement('button'); b.role='tab'; b.textContent = r.config.links+' link'+(r.config.links>1?'s':''); b.onclick=()=>{cur=i;frame=0;sync();}; tabs.appendChild(b); });
+  const label = r => r.config.links+' link'+(r.config.links>1?'s':'')+(r.config.phase==='shake'?' + pushes':'');
+  runs.forEach((r,i)=>{ const b=document.createElement('button'); b.role='tab'; b.textContent = label(r); b.onclick=()=>{cur=i;frame=0;sync();}; tabs.appendChild(b); });
   function sync(){ [...tabs.children].forEach((b,i)=>b.setAttribute('aria-selected', i===cur)); scrub.max = runs[cur].trajectory.frames.length-1; }
   play.onclick = ()=>{ playing=!playing; play.textContent = playing?'Pause':'Play'; };
   scrub.oninput = ()=>{ frame = +scrub.value; playing=false; play.textContent='Play'; draw(); };
@@ -318,12 +320,27 @@ const fmt = n => n.toLocaleString("en-US");
       ctx.fillStyle = css('--cart'); ctx.beginPath(); ctx.arc(cx+a[0]*scale, ground-a[1]*scale, 0.035*scale, 0, 7); ctx.fill();
     }
     const tip = pts[pts.length-1]; ctx.fillStyle = css('--series-2'); ctx.beginPath(); ctx.arc(cx+tip[0]*scale, ground-tip[1]*scale, 0.04*scale, 0, 7); ctx.fill();
+    // a push, drawn as an arrow at the point where the force acts
+    const sh = T.shakes && T.shakes[frame];
+    if(sh){
+      const [link, frac, fx, fy] = sh;
+      const a = link < 0 ? pts[0] : pts[link], b = link < 0 ? pts[0] : pts[link+1];
+      const px_ = link < 0 ? a[0] : a[0] + frac*(b[0]-a[0]), py_ = link < 0 ? a[1] : a[1] + frac*(b[1]-a[1]);
+      const X = cx + px_*scale, Y = ground - py_*scale, mag = Math.hypot(fx, fy), len = 0.25*scale*(0.5 + mag/(T.shake_force||1));
+      const ux = fx/mag, uy = -fy/mag;                    // screen y is down
+      ctx.strokeStyle = css('--warn'); ctx.fillStyle = css('--warn'); ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(X - ux*len, Y - uy*len); ctx.lineTo(X - ux*12, Y - uy*12); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X - ux*16 + uy*9, Y - uy*16 - ux*9); ctx.lineTo(X - ux*16 - uy*9, Y - uy*16 + ux*9); ctx.closePath(); ctx.fill();
+      ctx.font = '600 15px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(mag.toFixed(2)+' N push', X - ux*(len+40), Y - uy*(len+40) + 5);
+    }
     // readouts
     const t = frame*T.dt;
     tlabel.textContent = t.toFixed(2)+' s / '+(F.length*T.dt).toFixed(1)+' s';
     scrub.value = frame;
     const angles = []; for(let i=1;i<pts.length;i++){ const a=pts[i-1], b=pts[i]; angles.push(Math.atan2(b[0]-a[0], b[1]-a[1])*180/Math.PI); }
-    readout.innerHTML = `<div><b>${pts[0][0].toFixed(3)} m</b><span>cart x</span></div>` + angles.map((a,i)=>`<div><b>${a.toFixed(2)}°</b><span>link ${i+1} lean</span></div>`).join('') + `<div><b>${T.return.toFixed(1)}</b><span>episode return</span></div>`;
+    let pushes = 0; if(T.shakes){ for(let i=0;i<=frame;i++){ if(T.shakes[i] && !(i>0 && T.shakes[i-1])) pushes++; } }
+    readout.innerHTML = `<div><b>${pts[0][0].toFixed(3)} m</b><span>cart x</span></div>` + angles.map((a,i)=>`<div><b>${a.toFixed(2)}°</b><span>link ${i+1} lean</span></div>`).join('') + (T.shakes ? `<div><b>${pushes}</b><span>pushes so far</span></div>` : '') + `<div><b>${T.return.toFixed(1)}</b><span>episode return</span></div>`;
   }
   function loop(now){
     const dt = runs[cur].trajectory.dt*1000/(+speed.value);

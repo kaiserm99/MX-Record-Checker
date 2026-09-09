@@ -4,6 +4,7 @@ Train an agent to balance an N-link stick with Stable-Baselines3.
     python train.py --links 1                 # CartPole-like, a few minutes on CPU
     python train.py --links 2 --algo ppo      # double inverted pendulum
     python train.py --links 3 --timesteps 4e6 # triple inverted pendulum
+    python train.py --links 2 --phase shake   # continue from the balanced agent, with random pushes
 
 Outputs go to runs/<algo>_<N>links/:
     model.zip            trained policy
@@ -28,7 +29,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 from env import make_env
-from recipes import recipe
+from recipes import env_kwargs_for, recipe
 
 
 def build_vec_env(n_links: int, env_kwargs: dict, n_envs: int, seed: int, subprocess: bool):
@@ -47,6 +48,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--links", type=int, default=1)
     ap.add_argument("--algo", choices=["ppo", "sac"], default="ppo")
+    ap.add_argument("--phase", choices=["balance", "shake"], default="balance",
+                    help="'shake' warm-starts from the balanced agent and adds random pushes")
+    ap.add_argument("--init-from", type=Path, default=None,
+                    help="run directory to warm-start from (default for --phase shake: the balance run)")
     ap.add_argument("--timesteps", type=float, default=None, help="override the recipe budget")
     ap.add_argument("--n-envs", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
@@ -58,19 +63,28 @@ def main() -> None:
     torch.set_num_threads(1)
 
     r = recipe(args.links)
-    total_timesteps = int(args.timesteps or r["total_timesteps"])
-    out = args.out or Path("runs") / f"{args.algo}_{args.links}links"
+    env_kwargs = env_kwargs_for(args.links, args.phase)
+    total_timesteps = int(args.timesteps or (r["total_timesteps"] if args.phase == "balance" else r["shake_timesteps"]))
+    suffix = "" if args.phase == "balance" else "_shake"
+    out = args.out or Path("runs") / f"{args.algo}_{args.links}links{suffix}"
     out.mkdir(parents=True, exist_ok=True)
     set_random_seed(args.seed)
+    init_from = args.init_from or (Path("runs") / f"{args.algo}_{args.links}links" if args.phase == "shake" else None)
 
     # SAC is off-policy and learns from a single env just fine; PPO wants many.
     n_envs = args.n_envs if args.algo == "ppo" else 1
-    train_env = build_vec_env(args.links, r["env"], n_envs, args.seed, not args.no_subprocess)
-    eval_env = build_vec_env(args.links, r["env"], 1, args.seed + 1000, False)
+    train_env = build_vec_env(args.links, env_kwargs, n_envs, args.seed, not args.no_subprocess)
+    eval_env = build_vec_env(args.links, env_kwargs, 1, args.seed + 1000, False)
+    if init_from is not None:
+        # Continue with the observation statistics the previous agent was trained on.
+        stats = init_from / "best" / "vecnormalize.pkl"
+        stats = stats if stats.exists() else init_from / "vecnormalize.pkl"
+        train_env = VecNormalize.load(str(stats), train_env.venv)
+        eval_env = VecNormalize.load(str(stats), eval_env.venv)
     eval_env.training = False       # freeze statistics during evaluation
     eval_env.norm_reward = False    # report raw (un-normalised) episode returns
 
-    max_return = make_env(args.links, **r["env"]).max_episode_steps  # 1 reward/step
+    max_return = make_env(args.links, **env_kwargs).max_episode_steps  # 1 reward/step
     callback = EvalCallback(
         eval_env,
         best_model_save_path=str(out / "best"),
@@ -84,14 +98,20 @@ def main() -> None:
 
     algo_cls = {"ppo": PPO, "sac": SAC}[args.algo]
     model = algo_cls("MlpPolicy", train_env, seed=args.seed, device="cpu", verbose=0, **r[args.algo])
+    if init_from is not None:
+        weights = init_from / "best" / "best_model.zip"
+        weights = weights if weights.exists() else init_from / "model.zip"
+        model.set_parameters(str(weights), device="cpu")   # same network shape, new task
+        print("warm-started from", weights)
     model.set_logger(configure(str(out), ["stdout", "csv"]))
 
     (out / "config.json").write_text(json.dumps({
-        "links": args.links, "algo": args.algo, "timesteps": total_timesteps,
-        "n_envs": n_envs, "seed": args.seed, "recipe": r,
+        "links": args.links, "algo": args.algo, "phase": args.phase, "timesteps": total_timesteps,
+        "n_envs": n_envs, "seed": args.seed, "recipe": r, "env": env_kwargs,
+        "init_from": str(init_from) if init_from else None,
     }, indent=2, default=str))
 
-    print(f"Training {args.algo.upper()} on {args.links}-link stick for {total_timesteps:,} steps -> {out}")
+    print(f"Training {args.algo.upper()} on {args.links}-link stick ({args.phase}) for {total_timesteps:,} steps -> {out}")
     model.learn(total_timesteps=total_timesteps, callback=callback, progress_bar=False)
 
     model.save(out / "model")
@@ -99,7 +119,8 @@ def main() -> None:
     # Keep the eval statistics in sync with the "best" model too.
     (out / "best").mkdir(exist_ok=True)
     train_env.save(str(out / "best" / "vecnormalize.pkl"))
-    print("done; final eval mean reward:", float(np.mean(callback.last_mean_reward)))
+    best = callback.best_mean_reward
+    print("done; best eval mean reward:", "n/a (no evaluation ran)" if best == -np.inf else round(float(best), 1))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,17 @@ Reward      1.0 for every step alive minus small quadratic penalties that
 Episode ends (terminated) when the cart leaves the track or any link tilts
 more than `angle_limit`; it is truncated after `max_episode_steps`.
 
+Shakes (random disturbances).  With `shake_force > 0` the environment waits
+until the stick has been balanced calmly for a while and then pushes it: a
+force of random magnitude (up to `shake_force` N) and random direction
+(within +-30 deg of horizontal) is applied for `shake_duration` seconds at a
+random point of a random link (biased towards the tips, where it hurts most)
+or on the cart.  Pushes recur at random, roughly `shake_interval` seconds
+apart on average (a Poisson process), and never in the first `shake_warmup`
+seconds.  The agent is *not* told about the push: it has to notice it from
+the state and recover.  `info["shake"]` reports the push that is active so
+the viewer can draw it.
+
 N = 1 is the familiar CartPole; N = 2 is the double, N = 3 the triple inverted
 pendulum, and so on.  By default the simulation is *realistic*: air drag on the
 links and the cart, viscous + Coulomb friction in the hinges and on the rail
@@ -48,6 +59,12 @@ class StickBalanceEnv(gym.Env):
         position_cost: float = 0.05,
         angle_cost: float = 0.05,
         action_cost: float = 0.001,
+        shake_force: float = 0.0,       # N; 0 disables disturbances
+        shake_duration: float = 0.1,    # s
+        shake_interval: float = 3.0,    # s, mean time between pushes
+        shake_warmup: float = 2.0,      # s, no pushes before this
+        shake_calm_angle: float = 0.1,  # rad; only push while every link is within this ...
+        shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
     ) -> None:
         super().__init__()
         preset = {"realistic": realistic, "ideal": ideal}[physics]
@@ -69,6 +86,14 @@ class StickBalanceEnv(gym.Env):
         self.position_cost = position_cost
         self.angle_cost = angle_cost
         self.action_cost = action_cost
+        self.shake_force = shake_force
+        self.shake_duration = shake_duration
+        self.shake_interval = shake_interval
+        self.shake_warmup = shake_warmup
+        self.shake_calm_angle = shake_calm_angle
+        self.shake_calm_rate = shake_calm_rate
+        self._shake = None          # (link, fraction, fx, fy) while a push is active
+        self._shake_steps_left = 0
 
         # Observation bounds are only advisory (the agent normalises them
         # itself); velocities are unbounded in principle.
@@ -97,6 +122,30 @@ class StickBalanceEnv(gym.Env):
         """Cart hinge and link tips, shape (N+1, 2); handy for plotting."""
         return joint_positions(self.q, self.params)
 
+    def _is_calm(self) -> bool:
+        return bool(
+            np.all(np.abs(self.q[1:]) < self.shake_calm_angle)
+            and np.all(np.abs(self.qd[1:]) < self.shake_calm_rate)
+        )
+
+    def _maybe_start_shake(self) -> None:
+        """Start a new random push if the stick is balanced and the dice say so."""
+        if self.shake_force <= 0 or self._shake_steps_left > 0:
+            return
+        if self.steps * self.control_dt < self.shake_warmup or not self._is_calm():
+            return
+        # Poisson process: per-step probability = control_dt / mean interval.
+        if self.np_random.random() > self.control_dt / self.shake_interval:
+            return
+        rng = self.np_random
+        link = int(rng.integers(-1, self.n_links))               # -1 = cart
+        fraction = 0.0 if link < 0 else float(np.sqrt(rng.random()))  # biased to the tip
+        magnitude = self.shake_force * rng.uniform(0.3, 1.0)
+        angle = rng.uniform(-np.pi / 6, np.pi / 6)                # within 30 deg of horizontal
+        direction = rng.choice([-1.0, 1.0])
+        self._shake = (link, fraction, direction * magnitude * np.cos(angle), magnitude * np.sin(angle))
+        self._shake_steps_left = max(1, int(round(self.shake_duration / self.control_dt)))
+
     # -------------------------------------------------------------- gym API
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
@@ -104,13 +153,21 @@ class StickBalanceEnv(gym.Env):
         self.q = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
         self.qd = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
         self.steps = 0
+        self._shake = None
+        self._shake_steps_left = 0
         return self._obs(), {}
 
     def step(self, action):
         a = float(np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[0], -1.0, 1.0))
         u = a * self.max_force
-        self.q, self.qd = simulate(self.q, self.qd, u, self.control_dt, self.physics_substeps, self.params)
+        self._maybe_start_shake()
+        external = [self._shake] if self._shake_steps_left > 0 else []
+        self.q, self.qd = simulate(
+            self.q, self.qd, u, self.control_dt, self.physics_substeps, self.params, external
+        )
         self.steps += 1
+        if self._shake_steps_left > 0:
+            self._shake_steps_left -= 1
 
         terminated = self._fallen()
         truncated = self.steps >= self.max_episode_steps
@@ -124,7 +181,8 @@ class StickBalanceEnv(gym.Env):
         if terminated:
             reward = 0.0  # falling over is the worst thing that can happen
 
-        info = {"force": u, "x": float(self.q[0]), "angles": self.q[1:].copy()}
+        info = {"force": u, "x": float(self.q[0]), "angles": self.q[1:].copy(),
+                "shake": external[0] if external else None}
         return self._obs(), float(reward), terminated, truncated, info
 
 
