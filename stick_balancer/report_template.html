@@ -1,0 +1,324 @@
+<title>Stick Balancer Lab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;100,700;125,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#1b2130; --muted:#5d6577; --line:#d7dbe3; --line-soft:#e9ecf1;
+  --accent:#2a78d6; --accent-ink:#1c5cab; --series-1:#2a78d6; --series-2:#eb6834;
+  --good:#1a7f3c; --warn:#b9770e; --track:#8a93a6; --cart:#384152; --stick:#2a78d6; --stick-2:#5598e7; --stick-3:#86b6ef;
+  --code-bg:#eef1f6;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#15181e; --panel:#1d2129; --ink:#eef0f4; --muted:#a3abbd; --line:#343a47; --line-soft:#282d38;
+    --accent:#3987e5; --accent-ink:#86b6ef; --series-1:#3987e5; --series-2:#d95926;
+    --good:#3fbf6a; --warn:#e0a63a; --track:#6e768a; --cart:#c3c8d4; --stick:#3987e5; --stick-2:#6da7ec; --stick-3:#9ec5f4;
+    --code-bg:#12151a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#15181e; --panel:#1d2129; --ink:#eef0f4; --muted:#a3abbd; --line:#343a47; --line-soft:#282d38;
+  --accent:#3987e5; --accent-ink:#86b6ef; --series-1:#3987e5; --series-2:#d95926;
+  --good:#3fbf6a; --warn:#e0a63a; --track:#6e768a; --cart:#c3c8d4; --stick:#3987e5; --stick-2:#6da7ec; --stick-3:#9ec5f4;
+  --code-bg:#12151a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:900px;margin:0 auto;padding:40px 24px 80px;display:flex;flex-direction:column;gap:44px}
+h1,h2,h3{font-family:"Archivo","Helvetica Neue",Arial,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:2.3rem;font-weight:700;font-stretch:125%;letter-spacing:-.01em}
+h2{font-size:1.35rem;font-weight:700;font-stretch:100%}
+h3{font-size:1.02rem;font-weight:700}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+header{display:flex;flex-direction:column;gap:12px}
+header p.lede{font-size:1.1rem;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+.mono,code,td.num,th.num{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+code{font-size:.88em;background:var(--code-bg);padding:.08em .35em;border-radius:3px}
+pre{margin:0;background:var(--code-bg);border:1px solid var(--line-soft);border-radius:6px;padding:14px 16px;overflow-x:auto;font:.84rem/1.5 "JetBrains Mono",ui-monospace,Menlo,monospace}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.8rem;letter-spacing:.04em;text-transform:uppercase}
+td.num,th.num{text-align:right}
+.tablewrap{overflow-x:auto}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:600;border:1px solid var(--line)}
+.pill.good{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.pill.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.pill i{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{font:600 .88rem "Source Sans 3",sans-serif;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tabs button:focus-visible,.ctl button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+canvas{width:100%;height:auto;display:block;background:var(--panel);border-radius:6px}
+.ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:.9rem;color:var(--muted)}
+.ctl button{font:600 .85rem "Source Sans 3",sans-serif;padding:5px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.readout{display:flex;gap:18px;flex-wrap:wrap}
+.readout div{display:flex;flex-direction:column}
+.readout b{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:600;font-size:1.05rem;font-variant-numeric:tabular-nums}
+.readout span{font-size:.75rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.chart{display:flex;flex-direction:column;gap:6px}
+.chart svg{width:100%;height:auto;display:block}
+.chart .cap{font-size:.85rem;color:var(--muted)}
+.legend{display:flex;gap:16px;font-size:.82rem;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:6px;background:var(--c)}
+.eq{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.9rem;background:var(--code-bg);border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 6px 6px 0;overflow-x:auto}
+ul,ol{margin:0;padding-left:1.2em;max-width:70ch}
+li{margin:4px 0}
+a{color:var(--accent-ink)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.files td:first-child{white-space:nowrap}
+.tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:.8rem "JetBrains Mono",monospace;color:var(--ink);box-shadow:0 4px 14px rgba(0,0,0,.12);display:none}
+@media (prefers-reduced-motion:reduce){.autoplay{display:none}}
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">Reinforcement learning · cart with an N-link stick · pure NumPy physics + Stable-Baselines3</div>
+  <h1>Stick Balancer Lab</h1>
+  <p class="lede">An agent that teaches itself to balance a stick on a cart, then a stick with one joint, then two. Same code, one number changes.</p>
+  <div id="summary" class="tablewrap"></div>
+</header>
+
+<section id="anim">
+  <h2>Watch the trained agents</h2>
+  <div class="panel">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <canvas id="stage" width="1200" height="520" aria-label="Animation of the cart and stick controlled by the trained policy"></canvas>
+    <div class="ctl">
+      <button id="play">Pause</button>
+      <label>Speed <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+      <input id="scrub" type="range" min="0" max="0" value="0" style="flex:1;min-width:160px">
+      <span id="tlabel" class="mono"></span>
+    </div>
+    <div class="readout" id="readout"></div>
+    <p class="cap" style="color:var(--muted);font-size:.85rem">Deterministic policy, one 20-second episode (1000 control steps at 50 Hz). The cart is 1 kg, the whole stick 0.1 kg and 1 m regardless of how many joints it has. Fails if the cart leaves ±2.4 m or any link leans past its limit.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Learning curves</h2>
+  <div class="legend"><span style="--c:var(--series-1)">training episodes (stochastic policy, 100-episode rolling mean)</span><span style="--c:var(--series-2)">evaluation (deterministic, 10 episodes)</span></div>
+  <div class="charts" id="charts"></div>
+  <p style="color:var(--muted);font-size:.9rem">Return is one point per surviving step minus small penalties, so 1000 is a perfect 20-second balance. Training stops as soon as the evaluation mean clears 980.</p>
+</section>
+
+<section>
+  <h2>How it works</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>The physics (physics.py)</h3>
+      <p>Coordinates are the cart position and the absolute angle of each link from vertical. Every link is a uniform rod. The equations of motion come straight from d'Alembert's principle and are solved numerically each step, so the same 60 lines handle one link or ten:</p>
+      <div class="eq">M(q)·q̈ = u·e₀ + Σᵢ Jᵢᵀ( Fᵍʳᵃᵛᵢ − mᵢ·J̇ᵢ·q̇ ) − damping<br>M(q) = m₀e₀e₀ᵀ + Σᵢ ( mᵢ JᵢᵀJᵢ + Iᵢ eᵢeᵢᵀ )</div>
+      <p>Jᵢ is the Jacobian of link i's centre of mass. Integration is classic RK4 with 5 ms sub-steps. With one link the accelerations match Gymnasium's CartPole-v1 formulas to 1e-10, and energy is conserved to 1e-4 over 3 s with no forcing (test_physics.py).</p>
+    </div>
+    <div class="panel">
+      <h3>The task (env.py)</h3>
+      <p><b>Observation</b> · x, ẋ, θ₁…θ_N, θ̇₁…θ̇_N (raw; VecNormalize learns the scaling).</p>
+      <p><b>Action</b> · one number in [−1, 1], scaled to a horizontal force on the cart.</p>
+      <p><b>Reward</b> · 1 per step, minus 0.05·(x/x_max)², minus 0.05·mean(θᵢ/θ_max)², minus 0.001·a². Zero on the step that fails.</p>
+      <p><b>Episode</b> · ends when the cart leaves the track or a link leans past θ_max; truncated at 1000 steps.</p>
+      <p><b>Start</b> · every coordinate and velocity uniform in ±0.05, like CartPole-v1.</p>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>The recipes (recipes.py)</h3>
+    <div class="tablewrap" id="recipes"></div>
+    <p style="color:var(--muted);font-size:.9rem">PPO from Stable-Baselines3 with observation and reward normalisation, 4 subprocess environments, linearly decaying learning rate and clip range. Numbers descend from the tuned rl-baselines3-zoo entries for CartPole-v1 and InvertedDoublePendulum. SAC is wired in too (<code>--algo sac</code>) with the zoo's PyBullet double-pendulum settings.</p>
+  </div>
+</section>
+
+<section id="research">
+  <h2>What the research says</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Algorithm choice</h3>
+      <ul>
+        <li><b>PPO</b> is the default for these tasks: simple, stable, cheap per step, and the zoo's tuned configs solve CartPole in 1e5 steps and the MuJoCo double pendulum in about 1e6. It is what we run first.</li>
+        <li><b>SAC / TD3</b> are far more sample-efficient (they reuse every transition many times) and often solve InvertedDoublePendulum in a few 10⁴ environment steps, at the price of slower wall-clock per step. Use SAC when simulation is expensive, PPO when it is cheap.</li>
+        <li><b>DQN</b> only fits the discrete-action CartPole; it does not scale to the force control a multi-joint stick needs.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Why more joints is so much harder</h3>
+      <ul>
+        <li>The upright equilibrium of an N-link pendulum has N unstable eigenvalues, and the fastest one grows with the link count and shrinks with link length. Short, light upper links diverge in well under 100 ms.</li>
+        <li>A single force on the cart must stabilise all N angles at once (underactuated by N), so the controller needs both precise velocity estimates and high control bandwidth. Our recipes raise the force limit and the control authority with N.</li>
+        <li>The reward landscape is sparse early on: a random policy fails within a few steps, so the agent first has to learn to survive at all before it can learn to centre the cart.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Practices we adopted</h3>
+      <ul>
+        <li><b>Normalise observations and rewards</b> (VecNormalize), and save the statistics with the model. Angular velocities of upper links can be 100× larger than cart position.</li>
+        <li><b>Alive bonus plus small quadratic costs</b>, the same shape as MuJoCo's InvertedDoublePendulum reward, rather than a pure quadratic cost that makes falling early attractive.</li>
+        <li><b>Termination on lean angle</b> keeps episodes short while the agent is bad, which concentrates learning where it matters.</li>
+        <li><b>RK4 with sub-steps</b>: semi-implicit Euler at 20 ms, as in CartPole, is fine for one link but visibly wrong for three.</li>
+        <li><b>Deterministic evaluation with a stop threshold</b> so a run ends when the stick is actually balanced, not after a fixed budget.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Next steps if you want to go further</h3>
+      <ul>
+        <li><b>Swing-up</b>: start the links hanging down, feed sin/cos of the angles instead of raw angles, and shape the reward on tip height (the MuJoCo recipe).</li>
+        <li><b>Curriculum</b>: widen the initial perturbation or shrink the force limit over training instead of changing the number of links; the observation size changes with N so weights cannot be reused directly.</li>
+        <li><b>Domain randomisation</b> of masses, lengths and friction if the policy should ever drive a real cart.</li>
+        <li><b>MuJoCo</b>: swap the environment for <code>InvertedDoublePendulum-v5</code> to compare against published scores (solved at about 9,100 of 9,350).</li>
+      </ul>
+    </div>
+  </div>
+  <div id="sources" class="panel"><h3>Sources</h3><div id="sourcelist"></div></div>
+</section>
+
+<section>
+  <h2>Files</h2>
+  <div class="tablewrap"><table class="files">
+    <tr><th>File</th><th>What it does</th></tr>
+    <tr><td><code>physics.py</code></td><td>N-link cart-pendulum dynamics in mass-matrix form, RK4 integrator, energy and geometry helpers.</td></tr>
+    <tr><td><code>test_physics.py</code></td><td>Checks the derivation against Gymnasium's CartPole equations and verifies RK4 energy convergence for 1–4 links.</td></tr>
+    <tr><td><code>env.py</code></td><td>The Gymnasium environment: observation, action, reward, termination.</td></tr>
+    <tr><td><code>recipes.py</code></td><td>Every tuning number per link count (env limits, PPO and SAC hyperparameters, step budgets).</td></tr>
+    <tr><td><code>train.py</code></td><td>Trains PPO or SAC with VecNormalize, periodic evaluation, early stopping; writes <code>runs/</code>.</td></tr>
+    <tr><td><code>evaluate.py</code></td><td>Runs a trained policy, prints returns, exports the trajectory used in the animation above.</td></tr>
+    <tr><td><code>make_report.py</code></td><td>Rebuilds this page from <code>runs/</code>.</td></tr>
+    <tr><td><code>run_all.sh</code></td><td>Trains and evaluates the whole ladder 1 → 2 → 3 links.</td></tr>
+  </table></div>
+  <pre>pip install -r requirements.txt
+python test_physics.py                 # physics sanity checks
+python train.py --links 2              # train the double pendulum with PPO
+python evaluate.py --links 2 --export runs/ppo_2links/trajectory.json
+python make_report.py                  # regenerate report.html</pre>
+</section>
+</main>
+<div class="tooltip" id="tip"></div>
+
+<script>
+const RUNS = /*__RUNS__*/[];
+const SOURCES = /*__SOURCES__*/[];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = n => n.toLocaleString("en-US");
+
+/* ---------- summary table ---------- */
+(function(){
+  const rows = RUNS.map(r => {
+    const cfg = r.config || {}, ev = r.eval_curve || [], best = ev.length ? Math.max(...ev.map(p=>p[1])) : null;
+    const last = Math.max(0, ...r.train_curve.map(p=>p[0]), ...ev.map(p=>p[0]));
+    const traj = r.trajectory;
+    const solved = best !== null && best >= 980;
+    const status = solved ? '<span class="pill good"><i></i>balanced</span>' : (traj ? '<span class="pill warn"><i></i>partial</span>' : '<span class="pill warn"><i></i>training</span>');
+    return `<tr><td><b>${cfg.links} link${cfg.links>1?'s':''}</b> · ${(cfg.algo||'').toUpperCase()}</td><td>${status}</td><td class="num">${best===null?'–':best.toFixed(0)}</td><td class="num">${traj?traj.return.toFixed(0):'–'}</td><td class="num">${fmt(last)}</td></tr>`;
+  }).join('');
+  document.getElementById('summary').innerHTML = `<table><tr><th>Task</th><th>Status</th><th class="num">Best eval return</th><th class="num">Episode shown</th><th class="num">Steps trained</th></tr>${rows}</table>`;
+})();
+
+/* ---------- recipe table ---------- */
+(function(){
+  const rows = RUNS.map(r => {
+    const rc = (r.config||{}).recipe || {}, e = rc.env || {}, p = rc.ppo || {};
+    const na = p.policy_kwargs && p.policy_kwargs.net_arch ? p.policy_kwargs.net_arch.pi.join('×') : '';
+    return `<tr><td>${r.config.links}</td><td class="num">${e.max_force}</td><td class="num">${e.angle_limit}</td><td class="num">${fmt(rc.total_timesteps||0)}</td><td class="num">${p.n_steps}</td><td class="num">${p.batch_size}</td><td class="num">${p.gamma}</td><td class="num">${p.gae_lambda}</td><td class="num">${na}</td></tr>`;
+  }).join('');
+  document.getElementById('recipes').innerHTML = `<table><tr><th>Links</th><th class="num">Max force (N)</th><th class="num">Lean limit (rad)</th><th class="num">Budget (steps)</th><th class="num">n_steps</th><th class="num">batch</th><th class="num">γ</th><th class="num">λ</th><th class="num">Net</th></tr>${rows}</table>`;
+})();
+
+/* ---------- sources ---------- */
+(function(){
+  if(!SOURCES.length){ document.getElementById('sources').hidden = true; return; }
+  document.getElementById('sourcelist').innerHTML = '<ol>' + SOURCES.map(s=>`<li><a href="${s.url}" target="_blank" rel="noopener">${s.title}</a>${s.note?' — '+s.note:''}</li>`).join('') + '</ol>';
+})();
+
+/* ---------- learning curves ---------- */
+(function(){
+  const host = document.getElementById('charts'), tip = document.getElementById('tip');
+  RUNS.forEach(r => {
+    const W=420,H=230,ml=46,mr=12,mt=14,mb=32;
+    const tr = r.train_curve, ev = r.eval_curve;
+    if(!tr.length && !ev.length) return;
+    const xmax = Math.max(...tr.map(p=>p[0]), ...ev.map(p=>p[0]), 1), ymax = 1000;
+    const X = t => ml + (W-ml-mr)*t/xmax, Y = v => mt + (H-mt-mb)*(1 - Math.max(0,v)/ymax);
+    const path = pts => pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ');
+    const yticks=[0,250,500,750,1000], xt = 4;
+    let g = yticks.map(v=>`<line x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line-soft)"/><text x="${ml-6}" y="${Y(v)+4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="JetBrains Mono,monospace">${v}</text>`).join('');
+    for(let i=0;i<=xt;i++){ const t=xmax*i/xt; g+=`<text x="${X(t)}" y="${H-10}" text-anchor="${i==0?'start':i==xt?'end':'middle'}" font-size="10" fill="var(--muted)" font-family="JetBrains Mono,monospace">${t>=1e6?(t/1e6).toFixed(1)+'M':t>=1000?Math.round(t/1000)+'k':t}</text>`; }
+    g += `<line x1="${ml}" x2="${W-mr}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/>`;
+    g += `<line x1="${ml}" x2="${W-mr}" y1="${Y(980)}" y2="${Y(980)}" stroke="var(--muted)" stroke-dasharray="3 4" opacity=".6"/>`;
+    if(tr.length) g += `<path d="${path(tr)}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/>`;
+    if(ev.length){ g += `<path d="${path(ev)}" fill="none" stroke="var(--series-2)" stroke-width="2" stroke-linejoin="round"/>`;
+      ev.forEach(p=>{ g+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3" fill="var(--series-2)" stroke="var(--panel)" stroke-width="1.5"/>`; }); }
+    g += `<line id="xh" x1="0" x2="0" y1="${mt}" y2="${H-mb}" stroke="var(--muted)" opacity="0" />`;
+    const div = document.createElement('div'); div.className='chart';
+    div.innerHTML = `<h3>${r.config.links} link${r.config.links>1?'s':''}</h3><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Learning curve for ${r.config.links} links">${g}</svg><div class="cap">episode return vs environment steps · dashed line is the 980 stop threshold</div>`;
+    host.appendChild(div);
+    const svg = div.querySelector('svg'), xh = svg.querySelector('#xh');
+    svg.addEventListener('mousemove', e => {
+      const rect = svg.getBoundingClientRect(), t = (e.clientX-rect.left)/rect.width*W;
+      if(t<ml||t>W-mr){ xh.setAttribute('opacity',0); tip.style.display='none'; return; }
+      const steps = (t-ml)/(W-ml-mr)*xmax;
+      const near = pts => pts.length ? pts.reduce((a,b)=>Math.abs(b[0]-steps)<Math.abs(a[0]-steps)?b:a) : null;
+      const a = near(tr), b = near(ev);
+      xh.setAttribute('x1',t); xh.setAttribute('x2',t); xh.setAttribute('opacity',.5);
+      tip.style.display='block'; tip.style.left=(e.pageX+12)+'px'; tip.style.top=(e.pageY-10)+'px';
+      tip.innerHTML = `${fmt(Math.round(steps))} steps<br>${a?'train '+a[1].toFixed(0):''}${b?'<br>eval '+b[1].toFixed(0):''}`;
+    });
+    svg.addEventListener('mouseleave', ()=>{ xh.setAttribute('opacity',0); tip.style.display='none'; });
+  });
+})();
+
+/* ---------- animation ---------- */
+(function(){
+  const runs = RUNS.filter(r=>r.trajectory);
+  const stage = document.getElementById('stage'), ctx = stage.getContext('2d');
+  const tabs = document.getElementById('tabs'), play = document.getElementById('play'), speed = document.getElementById('speed'),
+        scrub = document.getElementById('scrub'), tlabel = document.getElementById('tlabel'), readout = document.getElementById('readout');
+  if(!runs.length){ document.getElementById('anim').innerHTML = '<h2>Watch the trained agents</h2><p>No trajectories yet: run <code>train.py</code> then <code>evaluate.py --export</code>.</p>'; return; }
+  let cur = 0, frame = 0, playing = !matchMedia('(prefers-reduced-motion: reduce)').matches, acc = 0, last = performance.now();
+  runs.forEach((r,i)=>{ const b=document.createElement('button'); b.role='tab'; b.textContent = r.config.links+' link'+(r.config.links>1?'s':''); b.onclick=()=>{cur=i;frame=0;sync();}; tabs.appendChild(b); });
+  function sync(){ [...tabs.children].forEach((b,i)=>b.setAttribute('aria-selected', i===cur)); scrub.max = runs[cur].trajectory.frames.length-1; }
+  play.onclick = ()=>{ playing=!playing; play.textContent = playing?'Pause':'Play'; };
+  scrub.oninput = ()=>{ frame = +scrub.value; playing=false; play.textContent='Play'; draw(); };
+  function draw(){
+    const T = runs[cur].trajectory, F = T.frames, pts = F[frame], W = stage.width, H = stage.height;
+    const xl = T.x_limit, scale = (W-80)/(2*xl), cx = W/2, ground = H-70;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = css('--panel'); ctx.fillRect(0,0,W,H);
+    // track
+    ctx.strokeStyle = css('--track'); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx-xl*scale, ground); ctx.lineTo(cx+xl*scale, ground); ctx.stroke();
+    ctx.fillStyle = css('--muted'); ctx.font = '16px JetBrains Mono, monospace'; ctx.textAlign='center';
+    [-2,-1,0,1,2].forEach(m=>{ ctx.fillRect(cx+m*scale-1, ground-6, 2, 12); ctx.fillText(m+' m', cx+m*scale, ground+30); });
+    // faint ghost of the whole path of the tip
+    ctx.strokeStyle = css('--line'); ctx.lineWidth = 1.5; ctx.beginPath();
+    for(let i=0;i<=frame;i+=2){ const p=F[i][F[i].length-1]; const X=cx+p[0]*scale, Y=ground-p[1]*scale; i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }
+    ctx.stroke();
+    // cart
+    const px = cx + pts[0][0]*scale, cw = 0.32*scale, ch = 0.16*scale;
+    ctx.fillStyle = css('--cart'); ctx.fillRect(px-cw/2, ground-ch, cw, ch);
+    ctx.beginPath(); ctx.arc(px-cw/3, ground, 0.03*scale, 0, 7); ctx.arc(px+cw/3, ground, 0.03*scale, 0, 7); ctx.fill();
+    // links
+    const cols = [css('--stick'), css('--stick-2'), css('--stick-3'), css('--stick-3')];
+    ctx.lineCap='round';
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1], b=pts[i];
+      ctx.strokeStyle = cols[(i-1)%cols.length]; ctx.lineWidth = 0.05*scale;
+      ctx.beginPath(); ctx.moveTo(cx+a[0]*scale, ground-a[1]*scale); ctx.lineTo(cx+b[0]*scale, ground-b[1]*scale); ctx.stroke();
+      ctx.fillStyle = css('--cart'); ctx.beginPath(); ctx.arc(cx+a[0]*scale, ground-a[1]*scale, 0.035*scale, 0, 7); ctx.fill();
+    }
+    const tip = pts[pts.length-1]; ctx.fillStyle = css('--series-2'); ctx.beginPath(); ctx.arc(cx+tip[0]*scale, ground-tip[1]*scale, 0.04*scale, 0, 7); ctx.fill();
+    // readouts
+    const t = frame*T.dt;
+    tlabel.textContent = t.toFixed(2)+' s / '+(F.length*T.dt).toFixed(1)+' s';
+    scrub.value = frame;
+    const angles = []; for(let i=1;i<pts.length;i++){ const a=pts[i-1], b=pts[i]; angles.push(Math.atan2(b[0]-a[0], b[1]-a[1])*180/Math.PI); }
+    readout.innerHTML = `<div><b>${pts[0][0].toFixed(3)} m</b><span>cart x</span></div>` + angles.map((a,i)=>`<div><b>${a.toFixed(2)}°</b><span>link ${i+1} lean</span></div>`).join('') + `<div><b>${T.return.toFixed(1)}</b><span>episode return</span></div>`;
+  }
+  function loop(now){
+    const dt = runs[cur].trajectory.dt*1000/(+speed.value);
+    if(playing){ acc += now-last; while(acc>dt){ acc-=dt; frame=(frame+1)%runs[cur].trajectory.frames.length; } }
+    last = now; draw(); requestAnimationFrame(loop);
+  }
+  sync(); requestAnimationFrame(loop);
+})();
+</script>
