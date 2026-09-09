@@ -52,8 +52,10 @@ class PushCurriculum(BaseCallback):
         self._apply()
 
     def _apply(self):
-        self.train_env.set_attr("shake_force", self.force)
-        self.eval_env.set_attr("shake_force", self.force)
+        # NB: VecEnv.set_attr would set the attribute on the Monitor *wrapper*, not on
+        # the real environment; set_wrapper_attr walks down to where it is defined.
+        self.train_env.env_method("set_wrapper_attr", "shake_force", self.force)
+        self.eval_env.env_method("set_wrapper_attr", "shake_force", self.force)
 
     @property
     def at_target(self) -> bool:
