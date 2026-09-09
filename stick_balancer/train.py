@@ -150,7 +150,8 @@ def main() -> None:
     # SAC is off-policy and learns from a single env just fine; PPO wants many.
     n_envs = args.n_envs if args.algo == "ppo" else 1
     train_env = build_vec_env(args.links, env_kwargs, n_envs, args.seed, not args.no_subprocess)
-    eval_env = build_vec_env(args.links, env_kwargs, 1, args.seed + 1000, False)
+    eval_kwargs = {**env_kwargs, "upright_reset_prob": 0.0}   # evaluation: always the real task
+    eval_env = build_vec_env(args.links, eval_kwargs, 1, args.seed + 1000, False)
     if init_from is not None:
         # Continue with the observation statistics the previous agent was trained on.
         stats = init_from / "best" / "vecnormalize.pkl"

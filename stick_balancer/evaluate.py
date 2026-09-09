@@ -22,7 +22,7 @@ from recipes import env_kwargs_for, run_name
 
 
 def load(run_dir: Path, algo: str, n_links: int, use_best: bool = True, phase: str = "balance", task: str = "balance"):
-    env_kwargs = env_kwargs_for(n_links, phase, task)
+    env_kwargs = {**env_kwargs_for(n_links, phase, task), "upright_reset_prob": 0.0}
     cfg_path = run_dir / "config.json"
     if phase == "shake" and cfg_path.exists():
         # test at the push strength the curriculum actually reached

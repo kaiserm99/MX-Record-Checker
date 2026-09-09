@@ -23,7 +23,9 @@ Two tasks share one environment:
                by sacrificing another.
       Ends only when the cart hits the end of the track (a crash); otherwise
       truncated after `max_episode_steps`.  There is no "fell over" termination,
-      because fallen is where it starts.
+      because fallen is where it starts.  For training, `upright_reset_prob`
+      starts that fraction of episodes tilted-but-up so the catch is practised
+      too (evaluation always starts hanging).
 
 Action (Box, shape 1, in [-1, 1]) is scaled to a horizontal force u = action * max_force
 in both tasks.
@@ -91,6 +93,7 @@ class StickBalanceEnv(gym.Env):
         shake_warmup: float = 2.0,      # s, no pushes before this
         shake_calm_angle: float = 0.1,  # rad; only push while every link is within this ...
         shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
+        upright_reset_prob: float = 0.0,  # swing-up only: fraction of episodes that start near upright (a training curriculum)
         randomize: dict | None = None,  # hidden per-episode physics, e.g. {"link_lengths": (0.6, 1.4), "link_masses": (0.5, 2.0), "cart_mass": (0.6, 1.4)}
     ) -> None:
         super().__init__()
@@ -101,6 +104,7 @@ class StickBalanceEnv(gym.Env):
                                  **(physics_overrides or {}))
         self.params = self._preset(**self._base_kwargs)
         self.physics = physics
+        self.upright_reset_prob = upright_reset_prob
         self.randomize = randomize or {}
         self.hidden_scales: dict[str, float] = {}   # the multiplicative factors drawn this episode
         self.actuator_gain = 1.0
@@ -217,7 +221,12 @@ class StickBalanceEnv(gym.Env):
         self.q = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
         self.qd = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
         if self.task == "swingup":
-            self.q[1:] += np.pi           # hanging straight down (plus the same small noise)
+            if self.np_random.random() < self.upright_reset_prob:
+                # curriculum: start already up, but tilted and moving, to practise the catch
+                self.q[1:] = self.np_random.uniform(-0.3, 0.3, size=self.n_links)
+                self.qd[1:] = self.np_random.uniform(-1.0, 1.0, size=self.n_links)
+            else:
+                self.q[1:] += np.pi       # hanging straight down (plus the same small noise)
         self.steps = 0
         self._shake = None
         self._shake_steps_left = 0

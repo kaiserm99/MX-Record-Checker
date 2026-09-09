@@ -24,7 +24,10 @@ Where do these numbers come from?
     shove for 0.1 s spins the top link at ~9 rad/s, which nothing can recover from;
     the curriculum finds the strongest recoverable push by itself.  Magnitudes are
     random in [0.3, 1] x current strength so every episode mixes easy and hard pushes.
-  * Swing-up: the stick starts hanging down.  More force is needed to pump energy
+  * Swing-up: the stick starts hanging down.  Half of the *training* episodes start
+    tilted-but-up instead (upright_reset_prob) so the network practises the catch and the
+    hold while it learns to pump energy; without this PPO learns to reach the top but flails
+    through it.  Evaluation always starts hanging.  More force is needed to pump energy
     into it (the classic single cart-pole swing-up works with ~10 N on a 1 kg cart,
     jointed sticks need more), the reward is dm_control's product reward, and the
     "solved" threshold is lower than for balancing because the first seconds of every
@@ -68,7 +71,7 @@ RECIPES: dict[int, dict] = {
         "shake": dict(shake_force=1.5, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
         "shake_start": 0.25,
         "shake_timesteps": 600_000,
-        "swingup": dict(task="swingup", max_force=15.0, init_noise=0.05),
+        "swingup": dict(task="swingup", max_force=15.0, init_noise=0.05, upright_reset_prob=0.5),
         "swingup_timesteps": 2_000_000,
         "swingup_stop": 800.0,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=64, n_steps=512, batch=256, gamma=0.99, lam=0.95, epochs=10),
@@ -80,7 +83,7 @@ RECIPES: dict[int, dict] = {
         "shake": dict(shake_force=0.5, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
         "shake_start": 0.05,
         "shake_timesteps": 1_000_000,
-        "swingup": dict(task="swingup", max_force=25.0, init_noise=0.05),
+        "swingup": dict(task="swingup", max_force=25.0, init_noise=0.05, upright_reset_prob=0.5),
         "swingup_timesteps": 4_000_000,
         "swingup_stop": 750.0,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=128, n_steps=512, batch=256, gamma=0.99, lam=0.95, epochs=10),
@@ -92,7 +95,7 @@ RECIPES: dict[int, dict] = {
         "shake": dict(shake_force=0.3, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
         "shake_start": 0.03,
         "shake_timesteps": 1_500_000,
-        "swingup": dict(task="swingup", max_force=35.0, init_noise=0.05),
+        "swingup": dict(task="swingup", max_force=35.0, init_noise=0.05, upright_reset_prob=0.5),
         "swingup_timesteps": 6_000_000,
         "swingup_stop": 700.0,
         "ppo": _ppo(lr=3e-4, clip=0.2, net=256, n_steps=1024, batch=512, gamma=0.99, lam=0.95, epochs=10),
