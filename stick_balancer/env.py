@@ -28,6 +28,11 @@ Two tasks share one environment:
 Action (Box, shape 1, in [-1, 1]) is scaled to a horizontal force u = action * max_force
 in both tasks.
 
+`randomize` draws hidden per-episode physics (pole length, pole mass, cart mass and the
+actuator gain, i.e. the force per unit action, as multiplicative factors) so that a policy
+has to identify the system from history; the factors are exposed as `env.hidden_scales`
+for analysis but never in the observation.
+
 Shakes (random disturbances).  With `shake_force > 0` the environment waits
 until the stick has been balanced calmly for a while and then pushes it: a
 force of random magnitude (up to `shake_force` N) and random direction
@@ -86,18 +91,19 @@ class StickBalanceEnv(gym.Env):
         shake_warmup: float = 2.0,      # s, no pushes before this
         shake_calm_angle: float = 0.1,  # rad; only push while every link is within this ...
         shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
+        randomize: dict | None = None,  # hidden per-episode physics, e.g. {"link_lengths": (0.6, 1.4), "link_masses": (0.5, 2.0), "cart_mass": (0.6, 1.4)}
     ) -> None:
         super().__init__()
         assert task in ("balance", "swingup"), task
         self.task = task
-        preset = {"realistic": realistic, "ideal": ideal}[physics]
-        self.params = preset(
-            n_links=n_links,
-            link_masses=link_masses,
-            link_lengths=link_lengths,
-            **(physics_overrides or {}),
-        )
+        self._preset = {"realistic": realistic, "ideal": ideal}[physics]
+        self._base_kwargs = dict(n_links=n_links, link_masses=link_masses, link_lengths=link_lengths,
+                                 **(physics_overrides or {}))
+        self.params = self._preset(**self._base_kwargs)
         self.physics = physics
+        self.randomize = randomize or {}
+        self.hidden_scales: dict[str, float] = {}   # the multiplicative factors drawn this episode
+        self.actuator_gain = 1.0
         self.n_links = n_links
         self.max_force = max_force
         self.control_dt = control_dt
@@ -191,6 +197,20 @@ class StickBalanceEnv(gym.Env):
     # -------------------------------------------------------------- gym API
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
+        if self.randomize:
+            # Draw hidden multiplicative factors (log-uniform) and rebuild the physics.
+            self.hidden_scales = {
+                k: float(np.exp(self.np_random.uniform(np.log(lo), np.log(hi))))
+                for k, (lo, hi) in self.randomize.items()
+            }
+            base = self._preset(**self._base_kwargs)
+            kw = dict(self._base_kwargs)
+            kw["link_masses"] = base.link_masses * self.hidden_scales.get("link_masses", 1.0)
+            kw["link_lengths"] = base.link_lengths * self.hidden_scales.get("link_lengths", 1.0)
+            kw["cart_mass"] = base.cart_mass * self.hidden_scales.get("cart_mass", 1.0)
+            self.params = self._preset(**kw)
+            # an unknown motor constant: the force per unit action
+            self.actuator_gain = self.hidden_scales.get("actuator_gain", 1.0)
         n1 = self.n_links + 1
         self.q = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
         self.qd = self.np_random.uniform(-self.init_noise, self.init_noise, size=n1)
@@ -203,7 +223,7 @@ class StickBalanceEnv(gym.Env):
 
     def step(self, action):
         a = float(np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[0], -1.0, 1.0))
-        u = a * self.max_force
+        u = a * self.max_force * self.actuator_gain
         self._maybe_start_shake()
         external = [self._shake] if self._shake_steps_left > 0 else []
         self.q, self.qd = simulate(

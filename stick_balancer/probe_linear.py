@@ -27,54 +27,8 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from env import make_env
-from physics import accelerations
+from lqr import discretise, linearise, lqr
 from recipes import env_kwargs_for, run_name
-
-
-def linearise(env, eps: float = 1e-6):
-    """Continuous-time A (2n+2 x 2n+2) and B (2n+2) at x = 0, u = 0.  State order matches
-    the observation: [x, x_dot, theta..., theta_dot...]."""
-    p, n = env.params, env.n_links
-
-    def f(state, u):
-        q = np.concatenate(([state[0]], state[2:2 + n]))
-        qd = np.concatenate(([state[1]], state[2 + n:]))
-        acc = accelerations(q, qd, u, p)
-        return np.concatenate(([qd[0], acc[0]], qd[1:], acc[1:]))
-
-    dim = 2 * n + 2
-    A = np.zeros((dim, dim))
-    for i in range(dim):
-        d = np.zeros(dim); d[i] = eps
-        A[:, i] = (f(d, 0.0) - f(-d, 0.0)) / (2 * eps)
-    B = (f(np.zeros(dim), eps) - f(np.zeros(dim), -eps)) / (2 * eps)
-    return A, B
-
-
-def discretise(A, B, dt):
-    """Exact zero-order hold via the matrix exponential of the augmented system."""
-    dim = A.shape[0]
-    M = np.zeros((dim + 1, dim + 1)); M[:dim, :dim] = A * dt; M[:dim, dim] = B * dt
-    # matrix exponential by scaling and squaring of a Taylor series (no scipy needed)
-    s = max(0, int(np.ceil(np.log2(max(np.linalg.norm(M, 1), 1e-12)))) + 1)
-    Ms = M / 2**s
-    E = np.eye(dim + 1); term = np.eye(dim + 1)
-    for k in range(1, 20):
-        term = term @ Ms / k; E += term
-    for _ in range(s):
-        E = E @ E
-    return E[:dim, :dim], E[:dim, dim]
-
-
-def lqr(Ad, Bd, Q, R, iters=5000):
-    P = Q.copy()
-    for _ in range(iters):
-        K = (Bd @ P @ Bd + R) ** -1 * (Bd @ P @ Ad)
-        P_new = Q + Ad.T @ P @ Ad - np.outer(Ad.T @ P @ Bd, K)
-        if np.abs(P_new - P).max() < 1e-10:
-            break
-        P = P_new
-    return (Bd @ P @ Bd + R) ** -1 * (Bd @ P @ Ad)
 
 
 def policy_gain(model, venv, env, obs0):
