@@ -23,6 +23,12 @@ from recipes import env_kwargs_for, run_name
 
 def load(run_dir: Path, algo: str, n_links: int, use_best: bool = True, phase: str = "balance", task: str = "balance"):
     env_kwargs = env_kwargs_for(n_links, phase, task)
+    cfg_path = run_dir / "config.json"
+    if phase == "shake" and cfg_path.exists():
+        # test at the push strength the curriculum actually reached
+        reached = json.loads(cfg_path.read_text()).get("shake_force_reached")
+        if reached is not None:
+            env_kwargs["shake_force"] = reached
     stats_dir = run_dir / "best" if use_best and (run_dir / "best" / "best_model.zip").exists() else run_dir
     model_path = stats_dir / ("best_model" if stats_dir.name == "best" else "model")
     venv = DummyVecEnv([lambda: make_env(n_links, **env_kwargs)])

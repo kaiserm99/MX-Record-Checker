@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnRewardThreshold
+from stable_baselines3.common.callbacks import BaseCallback, EvalCallback, StopTrainingOnRewardThreshold
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.utils import set_random_seed
@@ -32,6 +32,57 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNorm
 
 from env import make_env
 from recipes import budget_for, env_kwargs_for, recipe, run_name, stop_threshold
+
+
+class PushCurriculum(BaseCallback):
+    """Grow the push strength as the agent copes.
+
+    Starts at `start` newtons; every evaluation in which the agent scores at least
+    `advance_at` raises the strength by `growth` (x1.25) up to `target`.  The "best
+    model" bookkeeping is reset at each raise so the saved best model is always the
+    best at the hardest level reached.  Training may only stop (reward threshold)
+    once the target strength is reached.  The strength reached is written to
+    config.json so evaluate.py tests the agent at that level."""
+
+    def __init__(self, eval_cb: EvalCallback, train_env, eval_env, start: float, target: float,
+                 advance_at: float, growth: float = 1.25):
+        super().__init__()
+        self.eval_cb, self.train_env, self.eval_env = eval_cb, train_env, eval_env
+        self.force, self.target, self.advance_at, self.growth = min(start, target), target, advance_at, growth
+        self._apply()
+
+    def _apply(self):
+        self.train_env.set_attr("shake_force", self.force)
+        self.eval_env.set_attr("shake_force", self.force)
+
+    @property
+    def at_target(self) -> bool:
+        return self.force >= self.target - 1e-9
+
+    def _on_step(self) -> bool:  # called after every evaluation (callback_after_eval)
+        self.logger.record("curriculum/shake_force", self.force)
+        if not self.at_target and self.eval_cb.last_mean_reward >= self.advance_at:
+            self.force = min(self.force * self.growth, self.target)
+            self._apply()
+            self.eval_cb.best_mean_reward = -np.inf     # "best" now means best at this level
+            print(f"push curriculum: agent copes, raising push strength to {self.force:.3f} N")
+        return True
+
+
+class StopWhenSolvedAtTarget(BaseCallback):
+    """Stop training on a new best above `threshold`, but only once the push
+    curriculum (if any) has reached its target strength."""
+
+    def __init__(self, threshold: float, curriculum: "PushCurriculum | None"):
+        super().__init__()
+        self.threshold, self.curriculum = threshold, curriculum
+
+    def _on_step(self) -> bool:
+        reward = self.parent.best_mean_reward
+        if reward >= self.threshold and (self.curriculum is None or self.curriculum.at_target):
+            print(f"Stopping training because the mean reward {reward:.2f} is above the threshold {self.threshold}")
+            return False
+        return True
 
 
 def build_vec_env(n_links: int, env_kwargs: dict, n_envs: int, seed: int, subprocess: bool):
@@ -90,7 +141,10 @@ def main() -> None:
     eval_env.norm_reward = False    # report raw (un-normalised) episode returns
 
     max_return = make_env(args.links, **env_kwargs).max_episode_steps  # 1 reward/step
-    callback = EvalCallback(
+    threshold = stop_threshold(args.links, args.task, max_return)
+    curriculum = None
+    stopper = StopWhenSolvedAtTarget(threshold, None)
+    eval_cb = EvalCallback(
         eval_env,
         best_model_save_path=str(out / "best"),
         log_path=str(out),
@@ -98,9 +152,18 @@ def main() -> None:
         n_eval_episodes=10,
         deterministic=True,
         # stop early once the agent balances (almost) every eval episode to the end
-        callback_on_new_best=StopTrainingOnRewardThreshold(
-            reward_threshold=stop_threshold(args.links, args.task, max_return), verbose=1),
+        callback_on_new_best=stopper,
     )
+    if args.phase == "shake":
+        curriculum = PushCurriculum(
+            eval_cb, train_env, eval_env,
+            start=r["shake_start"], target=env_kwargs["shake_force"],
+            advance_at=0.95 * threshold,
+        )
+        stopper.curriculum = curriculum
+        eval_cb.callback_after_eval = curriculum
+        curriculum.parent = eval_cb
+    callback = eval_cb
 
     algo_cls = {"ppo": PPO, "sac": SAC}[args.algo]
     model = algo_cls("MlpPolicy", train_env, seed=args.seed, device="cpu", verbose=0, **r[args.algo])
@@ -125,7 +188,12 @@ def main() -> None:
     # Keep the eval statistics in sync with the "best" model too.
     (out / "best").mkdir(exist_ok=True)
     train_env.save(str(out / "best" / "vecnormalize.pkl"))
-    best = callback.best_mean_reward
+    if curriculum is not None:
+        cfg = json.loads((out / "config.json").read_text())
+        cfg["shake_force_reached"] = curriculum.force
+        (out / "config.json").write_text(json.dumps(cfg, indent=2, default=str))
+        print(f"push strength reached: {curriculum.force:.3f} N (target {curriculum.target} N)")
+    best = eval_cb.best_mean_reward
     print("done; best eval mean reward:", "n/a (no evaluation ran)" if best == -np.inf else round(float(best), 1))
 
 

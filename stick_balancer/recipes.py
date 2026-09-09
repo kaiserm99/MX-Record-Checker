@@ -17,11 +17,13 @@ Where do these numbers come from?
   * Env: force authority and the allowed lean grow with the number of links because a
     longer, jointed stick has faster unstable modes and needs more control bandwidth.
   * Shake phase: after the stick is balanced we continue training with random pushes
-    (see env.py).  Agents that never saw a push survive 0.25 N shoves about 75% of the
-    time and 0.5 N almost never, so the push strength is set where the balanced agent
-    fails and has to learn to recover: 1.0 N for one link, less for more links because
-    the same impulse tips a jointed stick further.  Magnitudes are random in
-    [0.3, 1] x shake_force so every episode mixes easy and hard pushes.
+    (see env.py).  The strength follows a curriculum (train.py PushCurriculum): it
+    starts at `shake_start` and grows by 25% every time the agent copes with the
+    current level, up to `shake_force`.  We first tried fixed strengths and found
+    that the upper links of a jointed stick are so light (50 g, 33 g) that a 0.75 N
+    shove for 0.1 s spins the top link at ~9 rad/s, which nothing can recover from;
+    the curriculum finds the strongest recoverable push by itself.  Magnitudes are
+    random in [0.3, 1] x current strength so every episode mixes easy and hard pushes.
   * Swing-up: the stick starts hanging down.  More force is needed to pump energy
     into it (the classic single cart-pole swing-up works with ~10 N on a 1 kg cart,
     jointed sticks need more), the reward is dm_control's product reward, and the
@@ -57,7 +59,8 @@ RECIPES: dict[int, dict] = {
     1: {  # classic CartPole: trivially easy, a minute on a laptop
         "env": dict(max_force=10.0, angle_limit=0.35),
         "total_timesteps": 200_000,
-        "shake": dict(shake_force=1.0, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake": dict(shake_force=1.5, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake_start": 0.25,
         "shake_timesteps": 600_000,
         "swingup": dict(task="swingup", max_force=15.0, init_noise=0.05),
         "swingup_timesteps": 2_000_000,
@@ -68,7 +71,8 @@ RECIPES: dict[int, dict] = {
     2: {  # double inverted pendulum: needs a few hundred thousand to a couple million steps
         "env": dict(max_force=20.0, angle_limit=0.4),
         "total_timesteps": 2_000_000,
-        "shake": dict(shake_force=0.75, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake": dict(shake_force=0.5, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake_start": 0.05,
         "shake_timesteps": 1_000_000,
         "swingup": dict(task="swingup", max_force=25.0, init_noise=0.05),
         "swingup_timesteps": 4_000_000,
@@ -79,7 +83,8 @@ RECIPES: dict[int, dict] = {
     3: {  # triple inverted pendulum: genuinely hard, plan for several million steps
         "env": dict(max_force=30.0, angle_limit=0.5),
         "total_timesteps": 5_000_000,
-        "shake": dict(shake_force=0.5, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake": dict(shake_force=0.3, shake_duration=0.1, shake_interval=3.0, shake_warmup=2.0),
+        "shake_start": 0.03,
         "shake_timesteps": 1_500_000,
         "swingup": dict(task="swingup", max_force=35.0, init_noise=0.05),
         "swingup_timesteps": 6_000_000,
