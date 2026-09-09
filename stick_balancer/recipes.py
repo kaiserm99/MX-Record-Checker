@@ -47,6 +47,12 @@ def _ppo(lr: float, clip: float, net: int, n_steps: int, batch: int, gamma: floa
     )
 
 
+# Warm-started phases (pushes) must not wander away from an already-good policy:
+# the untouched 2-link agent survives 0.1 N pushes perfectly, yet fine-tuning it at
+# the full learning rate dropped it to ~600 within 20k steps.  Smaller steps fix that.
+FINETUNE_PPO = dict(learning_rate=LinearSchedule(1e-4, 0.0, 1.0), clip_range=LinearSchedule(0.1, 0.0, 1.0))
+
+
 def _sac(net: int) -> dict:
     return dict(
         learning_rate=7.3e-4, buffer_size=300_000, learning_starts=10_000, batch_size=256,

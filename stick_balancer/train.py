@@ -31,7 +31,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 from env import make_env
-from recipes import budget_for, env_kwargs_for, recipe, run_name, stop_threshold
+from recipes import FINETUNE_PPO, budget_for, env_kwargs_for, recipe, run_name, stop_threshold
 
 
 class PushCurriculum(BaseCallback):
@@ -166,7 +166,10 @@ def main() -> None:
     callback = eval_cb
 
     algo_cls = {"ppo": PPO, "sac": SAC}[args.algo]
-    model = algo_cls("MlpPolicy", train_env, seed=args.seed, device="cpu", verbose=0, **r[args.algo])
+    algo_kwargs = dict(r[args.algo])
+    if init_from is not None and args.algo == "ppo":
+        algo_kwargs.update(FINETUNE_PPO)   # gentler updates when continuing from a trained agent
+    model = algo_cls("MlpPolicy", train_env, seed=args.seed, device="cpu", verbose=0, **algo_kwargs)
     if init_from is not None:
         weights = init_from / "best" / "best_model.zip"
         weights = weights if weights.exists() else init_from / "model.zip"
