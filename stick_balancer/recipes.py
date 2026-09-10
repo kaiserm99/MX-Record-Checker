@@ -24,11 +24,14 @@ Where do these numbers come from?
     shove for 0.1 s spins the top link at ~9 rad/s, which nothing can recover from;
     the curriculum finds the strongest recoverable push by itself.  Magnitudes are
     random in [0.3, 1] x current strength so every episode mixes easy and hard pushes.
-  * Swing-up: the stick starts hanging down.  Most *training* episodes (upright_reset_prob)
-    start nearly upright instead, with the balance task's small noise, so the network learns
-    the hold first, exactly as the balance agents did; the rest teach the swing.  Once
-    caught, dropping the stick ends the episode (env.drop_ends_episode), otherwise PPO
-    settles for swinging through the top again and again.  Evaluation always starts hanging.  More force is needed to pump energy
+  * Swing-up: the stick starts hanging down.  Trained in two stages (run_swingup.sh):
+    first "hold" with every episode starting nearly upright (the balance task in swing-up
+    clothing: sin/cos observations, product reward), then "swing" continuing from those
+    weights with half the episodes starting hanging.  One mixed stage does not work: a
+    hanging episode lasts 1000 steps and an early drop ~50, so swinging data starves the
+    hold.  Once caught, dropping the stick ends the episode (env.drop_ends_episode),
+    otherwise PPO settles for swinging through the top again and again.  Evaluation of
+    the swing stage always starts hanging.  More force is needed to pump energy
     into it (the classic single cart-pole swing-up works with ~10 N on a 1 kg cart,
     jointed sticks need more), the reward is dm_control's product reward, and the
     "solved" threshold is lower than for balancing because the first seconds of every
@@ -123,11 +126,6 @@ def env_kwargs_for(n_links: int, phase: str = "balance", task: str = "balance") 
         if task == "swingup":
             kwargs["shake_warmup"] = 8.0   # give the swing-up time before the first push
     return kwargs
-
-
-# Swing-up needs structured exploration: generalised state-dependent exploration (gSDE),
-# which the rl-baselines3-zoo uses for PPO on Pendulum swing-up.
-SWINGUP_PPO = dict(use_sde=True, sde_sample_freq=4)
 
 
 def budget_for(n_links: int, phase: str, task: str) -> int:

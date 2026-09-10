@@ -31,7 +31,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 from env import make_env
-from recipes import FINETUNE_PPO, SWINGUP_PPO, budget_for, env_kwargs_for, recipe, run_name, stop_threshold
+from recipes import FINETUNE_PPO, budget_for, env_kwargs_for, recipe, run_name, stop_threshold
 
 
 class PushCurriculum(BaseCallback):
@@ -127,6 +127,8 @@ def main() -> None:
                     help="'shake' warm-starts from the balanced agent and adds random pushes")
     ap.add_argument("--init-from", type=Path, default=None,
                     help="run directory to warm-start from (default for --phase shake: the balance run)")
+    ap.add_argument("--env-override", action="append", default=[], metavar="KEY=VALUE",
+                    help="override an env argument, e.g. --env-override upright_reset_prob=1.0")
     ap.add_argument("--timesteps", type=float, default=None, help="override the recipe budget")
     ap.add_argument("--n-envs", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
@@ -139,6 +141,9 @@ def main() -> None:
 
     r = recipe(args.links)
     env_kwargs = env_kwargs_for(args.links, args.phase, args.task)
+    for item in args.env_override:
+        key, value = item.split("=", 1)
+        env_kwargs[key] = json.loads(value)
     total_timesteps = int(args.timesteps or budget_for(args.links, args.phase, args.task))
     out = args.out or Path("runs") / run_name(args.links, args.algo, args.phase, args.task)
     out.mkdir(parents=True, exist_ok=True)
@@ -150,7 +155,10 @@ def main() -> None:
     # SAC is off-policy and learns from a single env just fine; PPO wants many.
     n_envs = args.n_envs if args.algo == "ppo" else 1
     train_env = build_vec_env(args.links, env_kwargs, n_envs, args.seed, not args.no_subprocess)
-    eval_kwargs = {**env_kwargs, "upright_reset_prob": 0.0}   # evaluation: always the real task
+    # Evaluation is the real task (start hanging), except in a hold-only stage
+    # (upright_reset_prob == 1) where it starts upright like the training episodes.
+    eval_upright = 1.0 if env_kwargs.get("upright_reset_prob") == 1.0 else 0.0
+    eval_kwargs = {**env_kwargs, "upright_reset_prob": eval_upright}
     eval_env = build_vec_env(args.links, eval_kwargs, 1, args.seed + 1000, False)
     if init_from is not None:
         # Continue with the observation statistics the previous agent was trained on.
@@ -188,8 +196,6 @@ def main() -> None:
 
     algo_cls = {"ppo": PPO, "sac": SAC}[args.algo]
     algo_kwargs = dict(r[args.algo])
-    if args.task == "swingup" and args.algo == "ppo":
-        algo_kwargs.update(SWINGUP_PPO)
     if args.phase == "shake" and args.algo == "ppo":
         algo_kwargs.update(FINETUNE_PPO)   # gentler updates when continuing a solved agent with pushes
     model = algo_cls("MlpPolicy", train_env, seed=args.seed, device="cpu", verbose=0, **algo_kwargs)
