@@ -81,5 +81,6 @@
     "shake_warmup": 2.0
   },
   "init_from": "runs/ppo_1links",
-  "shake_force_reached": 1.1920928955078125
+  "shake_force_reached": 0.95367431640625,
+  "shake_force_attempted": 1.1920928955078125
 }

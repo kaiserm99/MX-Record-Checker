@@ -49,6 +49,7 @@ class PushCurriculum(BaseCallback):
         super().__init__()
         self.eval_cb, self.train_env, self.eval_env = eval_cb, train_env, eval_env
         self.force, self.target, self.advance_at, self.growth = min(start, target), target, advance_at, growth
+        self.mastered = 0.0            # the strongest level the agent has actually coped with
         self._apply()
 
     def _apply(self):
@@ -63,6 +64,8 @@ class PushCurriculum(BaseCallback):
 
     def _on_step(self) -> bool:  # called after every evaluation (callback_after_eval)
         self.logger.record("curriculum/shake_force", self.force)
+        if self.eval_cb.last_mean_reward >= self.advance_at:
+            self.mastered = self.force
         if not self.at_target and self.eval_cb.last_mean_reward >= self.advance_at:
             self.force = min(self.force * self.growth, self.target)
             self._apply()
@@ -81,6 +84,7 @@ class TiltCurriculum(BaseCallback):
         super().__init__()
         self.eval_cb, self.train_env, self.eval_env = eval_cb, train_env, eval_env
         self.tilt, self.target, self.advance_at, self.growth, self.max_spin = start_tilt, target_tilt, advance_at, growth, max_spin
+        self.mastered = 0.0
         self._apply()
 
     def _apply(self):
@@ -95,6 +99,8 @@ class TiltCurriculum(BaseCallback):
 
     def _on_step(self) -> bool:
         self.logger.record("curriculum/start_tilt", self.tilt)
+        if self.eval_cb.last_mean_reward >= self.advance_at:
+            self.mastered = self.tilt
         if not self.at_target and self.eval_cb.last_mean_reward >= self.advance_at:
             self.tilt = min(self.tilt * self.growth, self.target)
             self._apply()
@@ -131,6 +137,8 @@ class StopWhenSolvedAtTarget(BaseCallback):
 
     def _on_step(self) -> bool:
         reward = self.parent.best_mean_reward
+        if self.curriculum is not None and reward >= self.threshold:
+            self.curriculum.mastered = getattr(self.curriculum, "force", None) or self.curriculum.tilt
         if reward >= self.threshold and (self.curriculum is None or self.curriculum.at_target):
             print(f"Stopping training because the mean reward {reward:.2f} is above the threshold {self.threshold}")
             return False
@@ -269,14 +277,16 @@ def main() -> None:
     train_env.save(str(out / "best" / "vecnormalize.pkl"))
     if isinstance(curriculum, TiltCurriculum):
         cfg = json.loads((out / "config.json").read_text())
-        cfg["start_tilt_reached"] = curriculum.tilt
+        cfg["start_tilt_reached"] = curriculum.mastered
+        cfg["start_tilt_attempted"] = curriculum.tilt
         (out / "config.json").write_text(json.dumps(cfg, indent=2, default=str))
-        print(f"start tilt reached: {curriculum.tilt:.3f} rad (target pi)")
+        print(f"start tilt mastered: {curriculum.mastered:.3f} rad, attempted {curriculum.tilt:.3f} (target pi)")
     elif curriculum is not None:
         cfg = json.loads((out / "config.json").read_text())
-        cfg["shake_force_reached"] = curriculum.force
+        cfg["shake_force_reached"] = curriculum.mastered
+        cfg["shake_force_attempted"] = curriculum.force
         (out / "config.json").write_text(json.dumps(cfg, indent=2, default=str))
-        print(f"push strength reached: {curriculum.force:.3f} N (target {curriculum.target} N)")
+        print(f"push strength mastered: {curriculum.mastered:.3f} N, attempted {curriculum.force:.3f} (target {curriculum.target} N)")
     best = eval_cb.best_mean_reward
     print("done; best eval mean reward:", "n/a (no evaluation ran)" if best == -np.inf else round(float(best), 1))
 
