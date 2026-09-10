@@ -97,8 +97,8 @@ class StickBalanceEnv(gym.Env):
         shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
         upright_reset_prob: float = 0.0,  # swing-up only: fraction of episodes that start near upright (a training curriculum)
         drop_ends_episode: bool = True,   # swing-up only: once caught upright, dropping the stick ends the episode
-        upright_reset_tilt: float = 0.15,  # rad; how far those episodes start from vertical ...
-        upright_reset_spin: float = 0.5,   # rad/s; ... and how fast the links are turning
+        upright_reset_tilt: float = 0.05,  # rad; how far those episodes start from vertical ...
+        upright_reset_spin: float = 0.1,   # rad/s; ... and how fast the links are turning
         randomize: dict | None = None,  # hidden per-episode physics, e.g. {"link_lengths": (0.6, 1.4), "link_masses": (0.5, 2.0), "cart_mass": (0.6, 1.4)}
     ) -> None:
         super().__init__()
