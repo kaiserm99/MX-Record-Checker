@@ -1,0 +1,85 @@
+{
+  "links": 1,
+  "algo": "ppo",
+  "task": "balance",
+  "phase": "shake",
+  "timesteps": 600000,
+  "n_envs": 4,
+  "seed": 0,
+  "recipe": {
+    "env": {
+      "max_force": 10.0,
+      "angle_limit": 0.35
+    },
+    "total_timesteps": 200000,
+    "shake": {
+      "shake_force": 1.5,
+      "shake_duration": 0.1,
+      "shake_interval": 3.0,
+      "shake_warmup": 2.0
+    },
+    "shake_start": 0.25,
+    "shake_timesteps": 600000,
+    "swingup": {
+      "task": "swingup",
+      "max_force": 15.0,
+      "init_noise": 0.05,
+      "upright_reset_prob": 0.5
+    },
+    "swingup_timesteps": 2000000,
+    "swingup_stop": 800.0,
+    "ppo": {
+      "n_steps": 512,
+      "batch_size": 256,
+      "n_epochs": 10,
+      "gamma": 0.99,
+      "gae_lambda": 0.95,
+      "learning_rate": "LinearSchedule(start=0.0003, end=0.0, end_fraction=1.0)",
+      "clip_range": "LinearSchedule(start=0.2, end=0.0, end_fraction=1.0)",
+      "ent_coef": 0.0,
+      "vf_coef": 0.5,
+      "max_grad_norm": 0.5,
+      "policy_kwargs": {
+        "net_arch": {
+          "pi": [
+            64,
+            64
+          ],
+          "vf": [
+            64,
+            64
+          ]
+        }
+      }
+    },
+    "sac": {
+      "learning_rate": 0.00073,
+      "buffer_size": 300000,
+      "learning_starts": 10000,
+      "batch_size": 256,
+      "gamma": 0.98,
+      "tau": 0.02,
+      "train_freq": 8,
+      "gradient_steps": 8,
+      "ent_coef": "auto",
+      "use_sde": true,
+      "policy_kwargs": {
+        "log_std_init": -3,
+        "net_arch": [
+          256,
+          256
+        ]
+      }
+    }
+  },
+  "env": {
+    "max_force": 10.0,
+    "angle_limit": 0.35,
+    "shake_force": 1.5,
+    "shake_duration": 0.1,
+    "shake_interval": 3.0,
+    "shake_warmup": 2.0
+  },
+  "init_from": "runs/ppo_1links",
+  "shake_force_reached": 1.1920928955078125
+}
