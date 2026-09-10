@@ -18,11 +18,11 @@ Two tasks share one environment:
                  upright        ((1 + tip_height / stick_length) / 2) ** 2
                  centred        1 - 0.5 (x / x_limit)^2
                  small_control  1 - 0.2 a^2
-                 small_velocity 0.5 + 0.5 exp(-ln(10) (max |theta_dot| / 5)^2)
+                 small_velocity 0.1 + 0.9 exp(-ln(10) (max |theta_dot| / 3)^2)
                so every sub-goal has to be met at once; nothing can be "bought"
                by sacrificing another.
       Ends when the cart hits the end of the track (a crash) or, once the stick
-      has been caught upright, when it is dropped again (`drop_ends_episode`);
+      has been caught (upright *and* slow), when it is dropped again (`drop_ends_episode`);
       otherwise truncated after `max_episode_steps`.  There is no "fell over"
       termination *before* the catch, because fallen is where it starts.  Without
       the drop rule, PPO settles for swinging through the top again and again.  For training, `upright_reset_prob`
@@ -97,6 +97,7 @@ class StickBalanceEnv(gym.Env):
         shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
         upright_reset_prob: float = 0.0,  # swing-up only: fraction of episodes that start near upright (a training curriculum)
         drop_ends_episode: bool = True,   # swing-up only: once caught upright, dropping the stick ends the episode
+        catch_rate: float = 2.0,          # rad/s; a "catch" needs every link within angle_limit/2 and slower than this
         upright_reset_tilt: float = 0.05,  # rad; how far those episodes start from vertical ...
         upright_reset_spin: float = 0.1,   # rad/s; ... and how fast the links are turning
         randomize: dict | None = None,  # hidden per-episode physics, e.g. {"link_lengths": (0.6, 1.4), "link_masses": (0.5, 2.0), "cart_mass": (0.6, 1.4)}
@@ -110,6 +111,7 @@ class StickBalanceEnv(gym.Env):
         self.params = self._preset(**self._base_kwargs)
         self.physics = physics
         self.drop_ends_episode = drop_ends_episode
+        self.catch_rate = catch_rate
         self._caught = False
         self.upright_reset_prob = upright_reset_prob
         self.upright_reset_tilt = upright_reset_tilt
@@ -178,7 +180,9 @@ class StickBalanceEnv(gym.Env):
         upright = (0.5 * (1.0 + tip_height / self.params.total_length)) ** 2
         centred = 1.0 - 0.5 * (self.q[0] / self.x_limit) ** 2
         small_control = 1.0 - 0.2 * a**2
-        small_velocity = 0.5 + 0.5 * np.exp(-np.log(10.0) * (np.max(np.abs(self.qd[1:])) / 5.0) ** 2)
+        # floor 0.1 (dm_control uses 0.5): swinging fast through the top must earn little,
+        # or cycling through the top becomes a comfortable strategy
+        small_velocity = 0.1 + 0.9 * np.exp(-np.log(10.0) * (np.max(np.abs(self.qd[1:])) / 3.0) ** 2)
         return float(upright * centred * small_control * small_velocity)
 
     def tip_positions(self) -> np.ndarray:
@@ -266,9 +270,13 @@ class StickBalanceEnv(gym.Env):
             if terminated:
                 reward = 0.0  # falling over is the worst thing that can happen
         else:
-            upright_now = bool(np.all(np.abs(self._wrap(self.q[1:])) < self.angle_limit))
+            lean = np.abs(self._wrap(self.q[1:]))
+            upright_now = bool(np.all(lean < self.angle_limit))
+            # A catch means upright *and slow*; a fast pass through the top is not a catch,
+            # so it is not punished as a drop and the agent may keep trying.
+            caught_now = bool(np.all(lean < 0.5 * self.angle_limit) and np.all(np.abs(self.qd[1:]) < self.catch_rate))
             dropped = self.drop_ends_episode and self._caught and not upright_now
-            self._caught = self._caught or upright_now
+            self._caught = self._caught or caught_now
             terminated = self._crashed() or dropped
             reward = 0.0 if terminated else self._swingup_reward(a)
 
