@@ -86,6 +86,23 @@ an `EvalCallback` that runs 10 deterministic episodes every 20k steps, and a
 `StopTrainingOnRewardThreshold` at 980 so training stops when the stick is actually
 balanced.  The saved `vecnormalize.pkl` is part of the model: load it at test time.
 
+## Status of the trained agents
+
+| task | 1 link | 2 links | 3 links |
+|---|---|---|---|
+| balance (realistic physics) | solved, 994/1000 | solved, 998/1000 | solved in most starts (998 over 10 eval episodes, ~2/3 of 30) |
+| balance + random pushes | copes up to 0.95 N | 0.30 N | 0.09 N (the light top links make stronger shoves unrecoverable) |
+| swing-up from hanging | 7/10 clean swing-up-and-holds | partial: holds, swings to the top, catches from tilts up to ~0.6 rad; the full swing from hanging is not yet reliable | not attempted yet |
+| swing-up + pushes | swings up, then survives shoves up to 1.5 N | queued | queued |
+
+The 2-link swing-up is where PPO on a CPU runs out of steam: the hold and the swing are
+each learned quickly, but arriving at the top slowly enough to be caught is found only in a
+minority of attempts (the double pendulum swing-up is a research-grade task in the
+literature; the papers that solve it on real hardware use off-policy methods such as TQC
+and far more samples).  `run_swingup.sh` documents the curriculum used; the obvious next
+levers are a higher force limit for the swing-up (with the hold stage redone at that force),
+SAC/TQC instead of PPO, and an energy-based shaping term.
+
 ## Research summary
 
 See `report.html` (section "What the research says") for the full notes with links.
