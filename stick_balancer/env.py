@@ -94,6 +94,8 @@ class StickBalanceEnv(gym.Env):
         shake_calm_angle: float = 0.1,  # rad; only push while every link is within this ...
         shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
         upright_reset_prob: float = 0.0,  # swing-up only: fraction of episodes that start near upright (a training curriculum)
+        upright_reset_tilt: float = 0.15,  # rad; how far those episodes start from vertical ...
+        upright_reset_spin: float = 0.5,   # rad/s; ... and how fast the links are turning
         randomize: dict | None = None,  # hidden per-episode physics, e.g. {"link_lengths": (0.6, 1.4), "link_masses": (0.5, 2.0), "cart_mass": (0.6, 1.4)}
     ) -> None:
         super().__init__()
@@ -105,6 +107,8 @@ class StickBalanceEnv(gym.Env):
         self.params = self._preset(**self._base_kwargs)
         self.physics = physics
         self.upright_reset_prob = upright_reset_prob
+        self.upright_reset_tilt = upright_reset_tilt
+        self.upright_reset_spin = upright_reset_spin
         self.randomize = randomize or {}
         self.hidden_scales: dict[str, float] = {}   # the multiplicative factors drawn this episode
         self.actuator_gain = 1.0
@@ -223,8 +227,8 @@ class StickBalanceEnv(gym.Env):
         if self.task == "swingup":
             if self.np_random.random() < self.upright_reset_prob:
                 # curriculum: start already up, but tilted and moving, to practise the catch
-                self.q[1:] = self.np_random.uniform(-0.3, 0.3, size=self.n_links)
-                self.qd[1:] = self.np_random.uniform(-1.0, 1.0, size=self.n_links)
+                self.q[1:] = self.np_random.uniform(-self.upright_reset_tilt, self.upright_reset_tilt, size=self.n_links)
+                self.qd[1:] = self.np_random.uniform(-self.upright_reset_spin, self.upright_reset_spin, size=self.n_links)
             else:
                 self.q[1:] += np.pi       # hanging straight down (plus the same small noise)
         self.steps = 0

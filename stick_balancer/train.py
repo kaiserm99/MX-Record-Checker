@@ -190,8 +190,8 @@ def main() -> None:
     algo_kwargs = dict(r[args.algo])
     if args.task == "swingup" and args.algo == "ppo":
         algo_kwargs.update(SWINGUP_PPO)
-    if init_from is not None and args.algo == "ppo":
-        algo_kwargs.update(FINETUNE_PPO)   # gentler updates when continuing from a trained agent
+    if args.phase == "shake" and args.algo == "ppo":
+        algo_kwargs.update(FINETUNE_PPO)   # gentler updates when continuing a solved agent with pushes
     model = algo_cls("MlpPolicy", train_env, seed=args.seed, device="cpu", verbose=0, **algo_kwargs)
     if init_from is not None:
         weights = init_from / "best" / "best_model.zip"
