@@ -21,9 +21,11 @@ Two tasks share one environment:
                  small_velocity 0.5 + 0.5 exp(-ln(10) (max |theta_dot| / 5)^2)
                so every sub-goal has to be met at once; nothing can be "bought"
                by sacrificing another.
-      Ends only when the cart hits the end of the track (a crash); otherwise
-      truncated after `max_episode_steps`.  There is no "fell over" termination,
-      because fallen is where it starts.  For training, `upright_reset_prob`
+      Ends when the cart hits the end of the track (a crash) or, once the stick
+      has been caught upright, when it is dropped again (`drop_ends_episode`);
+      otherwise truncated after `max_episode_steps`.  There is no "fell over"
+      termination *before* the catch, because fallen is where it starts.  Without
+      the drop rule, PPO settles for swinging through the top again and again.  For training, `upright_reset_prob`
       starts that fraction of episodes tilted-but-up so the catch is practised
       too (evaluation always starts hanging).
 
@@ -94,6 +96,7 @@ class StickBalanceEnv(gym.Env):
         shake_calm_angle: float = 0.1,  # rad; only push while every link is within this ...
         shake_calm_rate: float = 0.5,   # rad/s; ... and turning slower than this
         upright_reset_prob: float = 0.0,  # swing-up only: fraction of episodes that start near upright (a training curriculum)
+        drop_ends_episode: bool = True,   # swing-up only: once caught upright, dropping the stick ends the episode
         upright_reset_tilt: float = 0.15,  # rad; how far those episodes start from vertical ...
         upright_reset_spin: float = 0.5,   # rad/s; ... and how fast the links are turning
         randomize: dict | None = None,  # hidden per-episode physics, e.g. {"link_lengths": (0.6, 1.4), "link_masses": (0.5, 2.0), "cart_mass": (0.6, 1.4)}
@@ -106,6 +109,8 @@ class StickBalanceEnv(gym.Env):
                                  **(physics_overrides or {}))
         self.params = self._preset(**self._base_kwargs)
         self.physics = physics
+        self.drop_ends_episode = drop_ends_episode
+        self._caught = False
         self.upright_reset_prob = upright_reset_prob
         self.upright_reset_tilt = upright_reset_tilt
         self.upright_reset_spin = upright_reset_spin
@@ -234,6 +239,7 @@ class StickBalanceEnv(gym.Env):
         self.steps = 0
         self._shake = None
         self._shake_steps_left = 0
+        self._caught = False
         return self._obs(), {}
 
     def step(self, action):
@@ -260,7 +266,10 @@ class StickBalanceEnv(gym.Env):
             if terminated:
                 reward = 0.0  # falling over is the worst thing that can happen
         else:
-            terminated = self._crashed()
+            upright_now = bool(np.all(np.abs(self._wrap(self.q[1:])) < self.angle_limit))
+            dropped = self.drop_ends_episode and self._caught and not upright_now
+            self._caught = self._caught or upright_now
+            terminated = self._crashed() or dropped
             reward = 0.0 if terminated else self._swingup_reward(a)
 
         info = {"force": u, "x": float(self.q[0]), "angles": self.q[1:].copy(),
