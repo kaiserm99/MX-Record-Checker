@@ -36,7 +36,7 @@ def test_swingup_starts_down_and_never_terminates_for_falling():
 def test_swingup_drop_after_catch_terminates():
     e = make_env(1, task="swingup", physics="ideal")
     e.reset(seed=0)
-    e.q[1:] = 0.0; e.qd[1:] = 0.0          # place it upright: this step counts as the catch
+    e.q[1:] = 0.01; e.qd[1:] = 0.0         # nearly upright: the next step counts as the catch
     for t in range(400):
         _, r, term, _, info = e.step([0.0])  # no control: it must fall and end the episode
         if term:
