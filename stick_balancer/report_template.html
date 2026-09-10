@@ -219,15 +219,18 @@ const fmt = n => n.toLocaleString("en-US");
 /* ---------- summary table ---------- */
 (function(){
   const rows = RUNS.map(r => {
-    const cfg = r.config || {}, ev = r.eval_curve || [], best = ev.length ? Math.max(...ev.map(p=>p[1])) : null;
+    const cfg = r.config || {}, ev = r.eval_curve || [];
+    // prefer the final evaluation on the real task (curriculum runs evaluate easier stages while training)
+    const best = r.eval ? r.eval.mean : (ev.length ? Math.max(...ev.map(p=>p[1])) : null);
     const last = Math.max(0, ...r.train_curve.map(p=>p[0]), ...ev.map(p=>p[0]));
     const traj = r.trajectory;
     const thr = cfg.task==='swingup' ? ((cfg.recipe||{}).swingup_stop || 750) : 980;
     const solved = best !== null && best >= thr;
-    const status = solved ? '<span class="pill good"><i></i>balanced</span>' : (traj ? '<span class="pill warn"><i></i>partial</span>' : '<span class="pill warn"><i></i>training</span>');
+    const okShare = r.eval ? r.eval.returns.filter(v => v >= 0.8 * thr).length + '/' + r.eval.returns.length + ' episodes' : '';
+    const status = solved ? '<span class="pill good"><i></i>balanced</span>' : (traj ? `<span class="pill warn"><i></i>partial · ${okShare}</span>` : '<span class="pill warn"><i></i>training</span>');
     return `<tr><td><b>${cfg.links} link${cfg.links>1?'s':''}${cfg.task==='swingup'?' swing-up':''}${cfg.phase==='shake'?' + pushes':''}</b> · ${(cfg.algo||'').toUpperCase()}</td><td>${status}</td><td class="num">${best===null?'–':best.toFixed(0)}</td><td class="num">${traj?traj.return.toFixed(0):'–'}</td><td class="num">${fmt(last)}</td></tr>`;
   }).join('');
-  document.getElementById('summary').innerHTML = `<table><tr><th>Task</th><th>Status</th><th class="num">Best eval return</th><th class="num">Episode shown</th><th class="num">Steps trained</th></tr>${rows}</table>`;
+  document.getElementById('summary').innerHTML = `<table><tr><th>Task</th><th>Status</th><th class="num">Eval return</th><th class="num">Episode shown</th><th class="num">Steps trained</th></tr>${rows}</table>`;
 })();
 
 /* ---------- recipe table ---------- */

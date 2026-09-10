@@ -47,6 +47,7 @@ def main() -> None:
         runs.append({
             "name": run_dir.name,
             "config": json.loads((run_dir / "config.json").read_text()) if (run_dir / "config.json").exists() else {},
+            "eval": json.loads((run_dir / "eval.json").read_text()) if (run_dir / "eval.json").exists() else None,
             "train_curve": learning_curve(run_dir),
             "eval_curve": eval_curve(run_dir),
             "trajectory": json.loads(traj.read_text()) if traj.exists() else None,

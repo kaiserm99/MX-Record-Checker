@@ -76,6 +76,11 @@ def main() -> None:
     model, venv = load(run_dir, args.algo, args.links, phase=args.phase, task=args.task)
     returns = [run_episode(model, venv, seed=i)[0] for i in range(args.episodes)]
     print(f"{args.links}-link {args.algo}: mean return {np.mean(returns):.1f} +/- {np.std(returns):.1f}  ({returns})")
+    # keep the result next to the model: the report shows this (the real task, from the real start)
+    (run_dir / "eval.json").write_text(json.dumps({
+        "mean": float(np.mean(returns)), "std": float(np.std(returns)), "returns": [float(r) for r in returns],
+        "shake_force": venv.envs[0].unwrapped.shake_force,
+    }, indent=2))
 
     if args.export:
         total, frames, shakes = run_episode(model, venv, seed=123, record=True)
