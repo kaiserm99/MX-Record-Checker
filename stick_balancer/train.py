@@ -71,6 +71,38 @@ class PushCurriculum(BaseCallback):
         return True
 
 
+class TiltCurriculum(BaseCallback):
+    """Reverse curriculum for swing-up: every episode starts 'up but tilted'; the tilt
+    (and spin) widen by `growth` whenever the agent copes with the current level, until
+    the tilt reaches pi, where starts cover every posture including hanging down."""
+
+    def __init__(self, eval_cb: EvalCallback, train_env, eval_env, start_tilt: float,
+                 advance_at: float, growth: float = 1.4, target_tilt: float = np.pi, max_spin: float = 4.0):
+        super().__init__()
+        self.eval_cb, self.train_env, self.eval_env = eval_cb, train_env, eval_env
+        self.tilt, self.target, self.advance_at, self.growth, self.max_spin = start_tilt, target_tilt, advance_at, growth, max_spin
+        self._apply()
+
+    def _apply(self):
+        spin = min(self.max_spin, self.max_spin * self.tilt / self.target)
+        for env in (self.train_env, self.eval_env):
+            env.env_method("set_wrapper_attr", "upright_reset_tilt", float(self.tilt))
+            env.env_method("set_wrapper_attr", "upright_reset_spin", float(spin))
+
+    @property
+    def at_target(self) -> bool:
+        return self.tilt >= self.target - 1e-9
+
+    def _on_step(self) -> bool:
+        self.logger.record("curriculum/start_tilt", self.tilt)
+        if not self.at_target and self.eval_cb.last_mean_reward >= self.advance_at:
+            self.tilt = min(self.tilt * self.growth, self.target)
+            self._apply()
+            self.eval_cb.best_mean_reward = -np.inf
+            print(f"tilt curriculum: agent copes, widening start tilt to {self.tilt:.3f} rad")
+        return True
+
+
 class SaveStatsOnNewBest(BaseCallback):
     """EvalCallback saves best_model.zip; also save the normaliser statistics next to it,
     so the best model is usable (and inspectable) before training ends."""
@@ -127,6 +159,8 @@ def main() -> None:
                     help="'shake' warm-starts from the balanced agent and adds random pushes")
     ap.add_argument("--init-from", type=Path, default=None,
                     help="run directory to warm-start from (default for --phase shake: the balance run)")
+    ap.add_argument("--tilt-curriculum", action="store_true",
+                    help="swing-up: reverse curriculum, widen the starting tilt from upright to hanging as the agent copes")
     ap.add_argument("--env-override", action="append", default=[], metavar="KEY=VALUE",
                     help="override an env argument, e.g. --env-override upright_reset_prob=1.0")
     ap.add_argument("--timesteps", type=float, default=None, help="override the recipe budget")
@@ -157,6 +191,8 @@ def main() -> None:
     train_env = build_vec_env(args.links, env_kwargs, n_envs, args.seed, not args.no_subprocess)
     # Evaluation is the real task (start hanging), except in a hold-only stage
     # (upright_reset_prob == 1) where it starts upright like the training episodes.
+    if args.tilt_curriculum:
+        env_kwargs["upright_reset_prob"] = 1.0
     eval_upright = 1.0 if env_kwargs.get("upright_reset_prob") == 1.0 else 0.0
     eval_kwargs = {**env_kwargs, "upright_reset_prob": eval_upright}
     eval_env = build_vec_env(args.links, eval_kwargs, 1, args.seed + 1000, False)
@@ -183,6 +219,15 @@ def main() -> None:
         # on a new best: save the normaliser too, then stop early if solved
         callback_on_new_best=SaveStatsOnNewBest(train_env, out / "best", stopper),
     )
+    if args.tilt_curriculum:
+        curriculum = TiltCurriculum(
+            eval_cb, train_env, eval_env,
+            start_tilt=env_kwargs.get("upright_reset_tilt", 0.05),
+            advance_at=600.0,   # most of the 10 eval episodes caught and held
+        )
+        stopper.curriculum = curriculum
+        eval_cb.callback = curriculum
+        curriculum.parent = eval_cb
     if args.phase == "shake":
         curriculum = PushCurriculum(
             eval_cb, train_env, eval_env,
@@ -220,7 +265,12 @@ def main() -> None:
     # Keep the eval statistics in sync with the "best" model too.
     (out / "best").mkdir(exist_ok=True)
     train_env.save(str(out / "best" / "vecnormalize.pkl"))
-    if curriculum is not None:
+    if isinstance(curriculum, TiltCurriculum):
+        cfg = json.loads((out / "config.json").read_text())
+        cfg["start_tilt_reached"] = curriculum.tilt
+        (out / "config.json").write_text(json.dumps(cfg, indent=2, default=str))
+        print(f"start tilt reached: {curriculum.tilt:.3f} rad (target pi)")
+    elif curriculum is not None:
         cfg = json.loads((out / "config.json").read_text())
         cfg["shake_force_reached"] = curriculum.force
         (out / "config.json").write_text(json.dumps(cfg, indent=2, default=str))
