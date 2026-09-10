@@ -161,6 +161,8 @@ def main() -> None:
                     help="run directory to warm-start from (default for --phase shake: the balance run)")
     ap.add_argument("--tilt-curriculum", action="store_true",
                     help="swing-up: reverse curriculum, widen the starting tilt from upright to hanging as the agent copes")
+    ap.add_argument("--tilt-growth", type=float, default=1.15, help="factor by which the start tilt widens per raise")
+    ap.add_argument("--tilt-advance", type=float, default=500.0, help="eval mean return needed to widen the tilt")
     ap.add_argument("--env-override", action="append", default=[], metavar="KEY=VALUE",
                     help="override an env argument, e.g. --env-override upright_reset_prob=1.0")
     ap.add_argument("--timesteps", type=float, default=None, help="override the recipe budget")
@@ -223,7 +225,7 @@ def main() -> None:
         curriculum = TiltCurriculum(
             eval_cb, train_env, eval_env,
             start_tilt=env_kwargs.get("upright_reset_tilt", 0.05),
-            advance_at=600.0,   # most of the 10 eval episodes caught and held
+            advance_at=args.tilt_advance, growth=args.tilt_growth,
         )
         stopper.curriculum = curriculum
         eval_cb.callback = curriculum
