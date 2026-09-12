@@ -103,3 +103,8 @@ walked uphill from the Komperdell station / Murmliwasser (1983 m) to the
 Fisser Joch (2426 m): 6.0 km, +450 m, about 1 h 45 min. It is the official
 Outdooractive track (route 244292271, https://out.ac/IASvKc). Use `--reverse`
 for the descent.
+
+`routes/quellenweg_sattelkopf_loop.gpx` extends it: Quellenweg to the
+Mittlerer Sattelkopf junction (km 4.15), Steig 11 up to the Oberer Sattelkopf
+(2596 m) and Gratsteig 23 along the ridge down to the Fisser Joch. 6.6 km,
++632 / -189 m, built from the official Serfaus-Fiss-Ladis tour GPX files.
