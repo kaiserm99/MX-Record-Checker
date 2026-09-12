@@ -9,7 +9,7 @@ mountain sites using the free Open-Meteo forecast API (no API key needed).
 Default sites (Serfaus, Tyrol, Austria):
 
   * Serfaus Dorf              47.0403 N  10.6031 E   ~1427 m  (valley terrace)
-  * Murmliwasser (Komperdell) 47.0260 N  10.5810 E   ~1990 m  (mid-mountain)
+  * Murmliwasser (Komperdell) 47.0399 N  10.5628 E   ~1980 m  (mid-mountain)
 
 What the model does
 -------------------
@@ -37,7 +37,7 @@ Usage
     python alpine_inversion.py --json          # machine readable output
     python alpine_inversion.py \
         --lower "Serfaus Dorf:47.0403:10.6031:1427" \
-        --upper "Murmliwasser:47.0260:10.5810:1990"
+        --upper "Murmliwasser:47.0399:10.5628:1980"
 
 Only the Python standard library is required.
 """
@@ -84,7 +84,7 @@ class Site:
 
 
 DEFAULT_LOWER = Site("Serfaus Dorf", 47.0403, 10.6031, 1427)
-DEFAULT_UPPER = Site("Murmliwasser (Komperdell)", 47.0260, 10.5810, 1990)
+DEFAULT_UPPER = Site("Murmliwasser (Komperdell)", 47.0399, 10.5628, 1980)
 
 
 # --------------------------------------------------------------------------- #
@@ -95,7 +95,7 @@ def build_query(lower: Site, upper: Site, hours: int, model: str) -> str:
     hourly = [
         "temperature_2m", "dew_point_2m", "relative_humidity_2m",
         "visibility", "cloud_cover_low", "cloud_cover", "wind_speed_10m",
-        "wind_direction_10m", "surface_pressure", "weather_code",
+        "wind_gusts_10m", "wind_direction_10m", "surface_pressure", "weather_code",
     ]
     for p in PRESSURE_LEVELS:
         hourly += [
@@ -331,6 +331,7 @@ def site_state(site: Site, hourly: dict[str, Any], i: int) -> dict[str, Any]:
     vis = _val(hourly, "visibility", i)
     cl = _val(hourly, "cloud_cover_low", i)
     wind = _val(hourly, "wind_speed_10m", i)
+    gust = _val(hourly, "wind_gusts_10m", i)
     wdir = _val(hourly, "wind_direction_10m", i)
     psfc = _val(hourly, "surface_pressure", i)
     score, category, reasons = fog_score(t, td, rh, vis, cl, wind)
@@ -346,6 +347,7 @@ def site_state(site: Site, hourly: dict[str, Any], i: int) -> dict[str, Any]:
         "visibility_m": vis,
         "cloud_cover_low": cl,
         "wind_speed_kmh": wind,
+        "wind_gusts_kmh": gust,
         "wind_direction": wdir,
         "surface_pressure_hpa": psfc,
         "theta_k": theta,
@@ -439,8 +441,8 @@ def print_site(state: dict[str, Any]) -> None:
     vis = state["visibility_m"]
     print(f"    visibility {fmt(vis / 1000 if vis is not None else None, '.1f', ' km')}   "
           f"low cloud {fmt(state['cloud_cover_low'], '.0f', ' %')}   "
-          f"wind {fmt(state['wind_speed_kmh'], '.0f', ' km/h')} from "
-          f"{fmt(state['wind_direction'], '.0f', ' deg')}")
+          f"wind {fmt(state['wind_speed_kmh'], '.0f', ' km/h')} gusts "
+          f"{fmt(state['wind_gusts_kmh'], '.0f', ' km/h')} from {fmt(state['wind_direction'], '.0f', ' deg')}")
     print(f"    theta {fmt(state['theta_k'], '.1f', ' K')}   "
           f"cloud base (LCL) {fmt(state['cloud_base_msl_m'], '.0f', ' m')} MSL")
     print(f"    fog: {state['fog_category']} (score {state['fog_score']}/10)")

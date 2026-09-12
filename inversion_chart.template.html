@@ -98,6 +98,7 @@
   .key.lower { border-color: var(--lower); }
   .key.upper { border-color: var(--upper); }
   .key.thin { border-top-width: 1.5px; border-color: var(--ink-2); }
+  .key.gust { border-top-width: 1px; border-color: var(--muted); }
   .swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
   .swatch.deck { background: var(--deck); }
   .swatch.night { background: var(--night); border: 1px solid var(--grid); }
@@ -167,7 +168,7 @@
 
   <footer>
     <p>Model data from the Open-Meteo forecast API, downscaled to the site elevations. These are model estimates, not station observations.</p>
-    <p>Inversion means the upper site is warmer than the lower one (lapse rate above 0 °C per 100 m). The cloud deck is the layer of the model column with relative humidity of 85 % or more. Fog score is a 0 to 10 heuristic from dew-point spread, humidity, visibility, low cloud and wind.</p>
+    <p>Inversion means the upper site is warmer than the lower one (lapse rate above 0 °C per 100 m). The cloud deck is the layer of the model column with relative humidity of 85 % or more. Wind is the 10 m mean (thick) and gust (thin) speed. Fog score is a 0 to 10 heuristic from dew-point spread, humidity, visibility, low cloud and wind.</p>
   </footer>
 </div>
 
@@ -218,6 +219,7 @@ const DATA = __INVERSION_DATA__;
   const legendItems = [
     ["key lower", shortLower], ["key upper", shortUpper], ["key thin", "cloud base (LCL) above " + shortLower],
     ["swatch deck", "cloud deck (RH ≥ 85 %)"], ["swatch inv", "inversion zone"], ["swatch night", "night"],
+    ["key gust", "gusts (thin line, same colours)"],
   ];
   for (const [cls, label] of legendItems) {
     const s = document.createElement("span"); const k = document.createElement("i"); k.className = cls; s.appendChild(k); s.appendChild(document.createTextNode(label)); legend.appendChild(s);
@@ -230,6 +232,7 @@ const DATA = __INVERSION_DATA__;
     { key: "section", title: "Altitude cross-section", unit: "m MSL", h: 230, domain: [1300, 3300], ticks: [1500, 2000, 2500, 3000] },
     { key: "temp", title: "Temperature at 2 m", unit: "°C", h: 150, domain: null },
     { key: "lapse", title: "Lapse rate between the sites", unit: "°C per 100 m", h: 130, domain: [-1.0, 0.5], ticks: [-1.0, -0.5, 0, 0.5] },
+    { key: "wind", title: "Wind at 10 m", unit: "km/h, mean and gusts", h: 130, domain: null },
     { key: "fog", title: "Fog score", unit: "0–10", h: 110, domain: [0, 10], ticks: [0, 5, 10] },
   ];
   const svgNS = "http://www.w3.org/2000/svg";
@@ -261,6 +264,10 @@ const DATA = __INVERSION_DATA__;
     PANELS[1].domain = niceDomain(temps, 2);
     PANELS[1].ticks = []; for (let v = Math.ceil(PANELS[1].domain[0] / 4) * 4; v <= PANELS[1].domain[1]; v += 4) PANELS[1].ticks.push(v);
 
+    const windVals = H.flatMap(h => [h.lower.wind_speed_kmh, h.upper.wind_speed_kmh, h.lower.wind_gusts_kmh, h.upper.wind_gusts_kmh]).filter(v => v != null);
+    const wmax = Math.max(10, Math.ceil(Math.max(...windVals) / 10) * 10);
+    PANELS[3].domain = [0, wmax];
+    PANELS[3].ticks = []; for (let v = 0; v <= wmax; v += (wmax > 40 ? 20 : 10)) PANELS[3].ticks.push(v);
     let yTop = padT;
     const layout = [];
     for (const p of PANELS) {
@@ -367,9 +374,23 @@ const DATA = __INVERSION_DATA__;
       if (v != null) el("circle", { cx: x(N - 1), cy: L.y(v), r: 4, fill: C("--ink"), stroke: C("--surface"), "stroke-width": 2 }, svg);
     }
 
-    // ---- panel 4: fog score -------------------------------------------
+    // ---- panel 4: wind ---------------------------------------------------
     {
       const L = layout[3];
+      line(L, h => h.lower.wind_gusts_kmh, C("--lower"), 1);
+      line(L, h => h.upper.wind_gusts_kmh, C("--upper"), 1);
+      line(L, h => h.lower.wind_speed_kmh, C("--lower"));
+      line(L, h => h.upper.wind_speed_kmh, C("--upper"));
+      const a = H[N - 1].lower.wind_speed_kmh, b = H[N - 1].upper.wind_speed_kmh;
+      let dyA = 0, dyB = 0;
+      if (a != null && b != null && Math.abs(L.y(a) - L.y(b)) < 14) { const sft = (14 - Math.abs(L.y(a) - L.y(b))) / 2; if (L.y(a) < L.y(b)) { dyA = -sft; dyB = sft; } else { dyA = sft; dyB = -sft; } }
+      endLabel(L, h => h.lower.wind_speed_kmh, `${f0(a)} km/h ${W < 560 ? "" : shortLower}`, C("--lower"), dyA);
+      endLabel(L, h => h.upper.wind_speed_kmh, `${f0(b)} km/h ${W < 560 ? "" : shortUpper}`, C("--upper"), dyB);
+    }
+
+    // ---- panel 5: fog score -------------------------------------------
+    {
+      const L = layout[4];
       line(L, h => h.lower.fog_score, C("--lower"));
       line(L, h => h.upper.fog_score, C("--upper"));
       // mark the maximum of each series
@@ -438,20 +459,22 @@ const DATA = __INVERSION_DATA__;
     row(m ? `${f0(m.base_msl_m)}–${m.top_msl_m == null ? "top" : f0(m.top_msl_m)} m` : "none", "cloud deck");
     row(`${f0(h.lower.cloud_base_msl_m)} m`, `cloud base above ${shortLower}`);
     row(`${f0(h.lower.cloud_cover_low)} / ${f0(h.upper.cloud_cover_low)} %`, "low cloud lower / upper");
+    row(`${f0(h.lower.wind_speed_kmh)} (${f0(h.lower.wind_gusts_kmh)}) km/h`, `wind (gusts) ${shortLower}, from ${f0(h.lower.wind_direction)}°`);
+    row(`${f0(h.upper.wind_speed_kmh)} (${f0(h.upper.wind_gusts_kmh)}) km/h`, `wind (gusts) ${shortUpper}, from ${f0(h.upper.wind_direction)}°`);
     tip.appendChild(tbl);
   }
 
   // ---- table -------------------------------------------------------------
   {
     const tbl = document.getElementById("table");
-    const head = ["time", `T ${shortLower}`, `T ${shortUpper}`, "lapse", "inv", `fog ${shortLower}`, `fog ${shortUpper}`, `RH lo`, `RH up`, "deck base", "deck top", "cloud base", "scenario"];
+    const head = ["time", `T ${shortLower}`, `T ${shortUpper}`, "lapse", "inv", `fog ${shortLower}`, `fog ${shortUpper}`, `RH lo`, `RH up`, "wind lo", "wind up", "deck base", "deck top", "cloud base", "scenario"];
     const thead = document.createElement("thead"); const trh = document.createElement("tr");
     for (const c of head) { const th = document.createElement("th"); th.textContent = c; trh.appendChild(th); } thead.appendChild(trh); tbl.appendChild(thead);
     const tb = document.createElement("tbody");
     H.forEach((h, i) => {
       const tr = document.createElement("tr"); if (i === NOW) tr.className = "now";
       const m = h.moist_layer;
-      const cells = [h.time.replace("T", " "), f1(h.lower.temperature_c), f1(h.upper.temperature_c), fs(h.lapse_c_per_100m), h.inversion_between_sites ? "yes" : "", h.lower.fog_score, h.upper.fog_score, f0(h.lower.relative_humidity), f0(h.upper.relative_humidity), m ? f0(m.base_msl_m) : "", m ? (m.top_msl_m == null ? "top" : f0(m.top_msl_m)) : "", f0(h.lower.cloud_base_msl_m), h.scenario];
+      const cells = [h.time.replace("T", " "), f1(h.lower.temperature_c), f1(h.upper.temperature_c), fs(h.lapse_c_per_100m), h.inversion_between_sites ? "yes" : "", h.lower.fog_score, h.upper.fog_score, f0(h.lower.relative_humidity), f0(h.upper.relative_humidity), `${f0(h.lower.wind_speed_kmh)}/${f0(h.lower.wind_gusts_kmh)}`, `${f0(h.upper.wind_speed_kmh)}/${f0(h.upper.wind_gusts_kmh)}`, m ? f0(m.base_msl_m) : "", m ? (m.top_msl_m == null ? "top" : f0(m.top_msl_m)) : "", f0(h.lower.cloud_base_msl_m), h.scenario];
       cells.forEach((c, k) => { const td = document.createElement("td"); td.textContent = c; if (k === cells.length - 1) td.style.textAlign = "left"; tr.appendChild(td); });
       tb.appendChild(tr);
     });

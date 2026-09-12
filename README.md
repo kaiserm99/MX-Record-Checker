@@ -46,7 +46,7 @@ MIT (https://choosealicense.com/licenses/mit/)
 
 A second, unrelated utility that lives in this repo: it models the current
 temperature inversion and fog situation between **Serfaus Dorf (~1427 m)** and
-**Murmliwasser / Komperdell (~1990 m)** using the free
+**Murmliwasser / Komperdell (~1980 m)** using the free
 [Open-Meteo](https://open-meteo.com/) API. No API key and no third-party
 packages are needed.
 
@@ -58,7 +58,7 @@ python alpine_inversion.py --json          # machine-readable output
 python alpine_inversion.py --html chart.html # interactive diagram across the day
 python alpine_inversion.py \
     --lower "Serfaus Dorf:47.0403:10.6031:1427" \
-    --upper "Murmliwasser:47.0260:10.5810:1990"
+    --upper "Murmliwasser:47.0399:10.5628:1980"
 ```
 
 What it computes:
@@ -82,3 +82,22 @@ What it computes:
 
 Note: the 2 m values are model data downscaled to the given elevation, not
 station observations, so treat the output as a model estimate.
+
+## Hike forecast along a GPX track (`hike_forecast.py`)
+
+Walks a GPX track with a Naismith/Langmuir time model, samples it every few
+hundred metres and asks Open-Meteo for temperature, feels-like, humidity,
+wind, gusts, cloud, visibility, precipitation and fog risk at each point,
+interpolated to the estimated time of arrival.
+
+```bash
+python hike_forecast.py routes/quellenweg.gpx --start 10:00            # today, 10:00
+python hike_forecast.py routes/quellenweg.gpx --start 2026-09-13T09:30
+python hike_forecast.py routes/quellenweg.gpx --start 10:00 --duration 98   # force total minutes
+python hike_forecast.py routes/quellenweg.gpx --start 10:00 --reverse      # walk uphill instead
+python hike_forecast.py routes/quellenweg.gpx --start 10:00 --json
+```
+
+`routes/quellenweg.gpx` is the Quellenweg themed trail in Serfaus-Fiss-Ladis
+(Schönjoch top station 2407 m down to the Komperdell station / Murmliwasser
+at 1976 m, 5.6 km), taken from the public Komoot smart tour.
