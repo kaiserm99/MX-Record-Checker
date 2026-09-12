@@ -41,3 +41,40 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ## License
 MIT (https://choosealicense.com/licenses/mit/)
+
+## Alpine inversion & fog model (`alpine_inversion.py`)
+
+A second, unrelated utility that lives in this repo: it models the current
+temperature inversion and fog situation between **Serfaus Dorf (~1427 m)** and
+**Murmliwasser / Komperdell (~1990 m)** using the free
+[Open-Meteo](https://open-meteo.com/) API. No API key and no third-party
+packages are needed.
+
+```bash
+python alpine_inversion.py                 # text report, next 24 h
+python alpine_inversion.py --hours 36      # longer time line
+python alpine_inversion.py --model icon_d2 # force the 2 km ICON-D2 model
+python alpine_inversion.py --json          # machine-readable output
+python alpine_inversion.py \
+    --lower "Serfaus Dorf:47.0403:10.6031:1427" \
+    --upper "Murmliwasser:47.0260:10.5810:1990"
+```
+
+What it computes:
+
+- **Site-to-site lapse rate** (°C / 100 m) between the lower and upper site.
+  A positive value means the mountain is warmer than the valley, i.e. an
+  inversion. Standard atmosphere is about -0.65.
+- **Potential-temperature gradient** as a stability measure.
+- **Free-air inversion layers** from the model's pressure levels
+  (850 / 800 / 700 hPa above the valley floor).
+- **Fog score (0–10)** per site from dew-point spread, humidity, visibility,
+  low cloud and wind, with a category (no fog / mist possible / fog likely).
+- **Cloud base (LCL)** above the village and the **moist layer** (base and top
+  of any RH ≥ 85 % layer), which tells whether the upper site sits above a
+  sea of fog.
+- A **time line** for the past 6 h and the next N hours showing when the
+  inversion forms or breaks and how the fog risk evolves.
+
+Note: the 2 m values are model data downscaled to the given elevation, not
+station observations, so treat the output as a model estimate.
