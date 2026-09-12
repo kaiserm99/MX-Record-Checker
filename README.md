@@ -55,6 +55,7 @@ python alpine_inversion.py                 # text report, next 24 h
 python alpine_inversion.py --hours 36      # longer time line
 python alpine_inversion.py --model icon_d2 # force the 2 km ICON-D2 model
 python alpine_inversion.py --json          # machine-readable output
+python alpine_inversion.py --html chart.html # interactive diagram across the day
 python alpine_inversion.py \
     --lower "Serfaus Dorf:47.0403:10.6031:1427" \
     --upper "Murmliwasser:47.0260:10.5810:1990"
@@ -75,6 +76,9 @@ What it computes:
   sea of fog.
 - A **time line** for the past 6 h and the next N hours showing when the
   inversion forms or breaks and how the fog risk evolves.
+- With `--html FILE`, an **interactive diagram** (altitude cross-section with
+  the cloud deck, temperatures, lapse rate and fog score across the day) built
+  from `inversion_chart.template.html`.
 
 Note: the 2 m values are model data downscaled to the given elevation, not
 station observations, so treat the output as a model estimate.

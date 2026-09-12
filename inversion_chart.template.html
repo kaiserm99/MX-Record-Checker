@@ -1,0 +1,467 @@
+<title>Serfaus Fog & Inversion</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --plane: #f6f6f2;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --lower: #2a78d6;
+    --upper: #eb6834;
+    --deck: rgba(82,81,78,0.22);
+    --deck-open: rgba(82,81,78,0.10);
+    --night: rgba(11,11,11,0.045);
+    --inversion: rgba(208,59,59,0.12);
+    --inversion-ink: #d03b3b;
+    --now: #0b0b0b;
+    --tip-bg: #fcfcfb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --plane: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255,255,255,0.10);
+      --lower: #3987e5;
+      --upper: #d95926;
+      --deck: rgba(195,194,183,0.22);
+      --deck-open: rgba(195,194,183,0.10);
+      --night: rgba(255,255,255,0.05);
+      --inversion: rgba(230,103,103,0.14);
+      --inversion-ink: #e66767;
+      --now: #ffffff;
+      --tip-bg: #232322;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --lower: #3987e5;
+    --upper: #d95926;
+    --deck: rgba(195,194,183,0.22);
+    --deck-open: rgba(195,194,183,0.10);
+    --night: rgba(255,255,255,0.05);
+    --inversion: rgba(230,103,103,0.14);
+    --inversion-ink: #e66767;
+    --now: #ffffff;
+    --tip-bg: #232322;
+  }
+
+  body {
+    background: var(--plane);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    padding-inline: 20px;
+    padding-block: 28px 48px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 20px; }
+  .wrap > * { min-width: 0; }
+  header { display: grid; gap: 6px; }
+  header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+  header .sub { color: var(--ink-2); margin: 0; max-width: 68ch; }
+  .eyebrow { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  .status {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 14px 18px; display: grid; gap: 12px;
+  }
+  .status .scenario { font-size: 17px; font-weight: 500; margin: 0; text-wrap: balance; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+  .stat { display: grid; gap: 1px; min-width: 120px; }
+  .stat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .l { color: var(--muted); font-size: 12px; }
+  .stat .v .u { font-size: 13px; font-weight: 400; color: var(--ink-2); margin-left: 2px; }
+
+  .chart { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px 8px 8px; position: relative; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 0 10px 8px; font-size: 12px; color: var(--ink-2); align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .key { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--ink); border-radius: 2px; }
+  .key.lower { border-color: var(--lower); }
+  .key.upper { border-color: var(--upper); }
+  .key.thin { border-top-width: 1.5px; border-color: var(--ink-2); }
+  .swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
+  .swatch.deck { background: var(--deck); }
+  .swatch.night { background: var(--night); border: 1px solid var(--grid); }
+  .swatch.inv { background: var(--inversion); border: 1px solid var(--inversion-ink); }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 11px; fill: var(--ink-2); }
+  svg text.tick { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  svg text.ptitle { font-size: 12px; font-weight: 600; fill: var(--ink); }
+  svg text.unit { fill: var(--muted); font-weight: 400; }
+  svg text.endlabel { font-size: 11.5px; font-weight: 500; fill: var(--ink); }
+  svg text.ref { fill: var(--muted); font-size: 10.5px; }
+  svg text.nowlabel { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 500; fill: var(--ink); }
+
+  .tip {
+    position: absolute; pointer-events: none; background: var(--tip-bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; font-size: 12px; min-width: 190px; box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+    display: none; z-index: 2;
+  }
+  .tip .t { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .tip .sc { color: var(--ink-2); margin-bottom: 6px; max-width: 240px; }
+  .tip table { border-collapse: collapse; }
+  .tip td { padding: 1px 6px 1px 0; white-space: nowrap; }
+  .tip td.v { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+  .tip td.n { color: var(--ink-2); }
+  .tip .k { display: inline-block; width: 12px; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
+
+  details { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; }
+  summary { cursor: pointer; font-weight: 500; color: var(--ink-2); }
+  summary:focus-visible { outline: 2px solid var(--lower); outline-offset: 2px; border-radius: 3px; }
+  .tablewrap { overflow-x: auto; margin-top: 10px; }
+  table.data { border-collapse: collapse; font-family: "IBM Plex Mono", monospace; font-size: 12px; font-variant-numeric: tabular-nums; }
+  table.data th, table.data td { padding: 4px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  table.data th { color: var(--muted); font-weight: 500; text-align: right; }
+  table.data td:first-child, table.data th:first-child { text-align: left; }
+  table.data tr.now td { font-weight: 600; }
+  footer { color: var(--muted); font-size: 12px; max-width: 72ch; }
+  footer p { margin: 0 0 4px; }
+  @media (max-width: 520px) {
+    .stat .v { font-size: 18px; }
+    header h1 { font-size: 20px; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow" id="eyebrow">Open-Meteo · Serfaus, Tyrol</div>
+    <h1>Serfaus Fog &amp; Inversion</h1>
+    <p class="sub" id="subtitle"></p>
+  </header>
+
+  <section class="status" aria-label="Current situation">
+    <div class="eyebrow" id="now-label">Now</div>
+    <p class="scenario" id="scenario"></p>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="chart" aria-label="Diagram across the day">
+    <div class="legend" id="legend"></div>
+    <div id="svgwrap"></div>
+    <div class="tip" id="tip"></div>
+  </section>
+
+  <details>
+    <summary>Hourly values as a table</summary>
+    <div class="tablewrap"><table class="data" id="table"></table></div>
+  </details>
+
+  <footer>
+    <p>Model data from the Open-Meteo forecast API, downscaled to the site elevations. These are model estimates, not station observations.</p>
+    <p>Inversion means the upper site is warmer than the lower one (lapse rate above 0 °C per 100 m). The cloud deck is the layer of the model column with relative humidity of 85 % or more. Fog score is a 0 to 10 heuristic from dew-point spread, humidity, visibility, low cloud and wind.</p>
+  </footer>
+</div>
+
+<script>
+const DATA = __INVERSION_DATA__;
+(function () {
+  const H = DATA.hours, N = H.length, NOW = DATA.now_index;
+  const LOWER = DATA.lower, UPPER = DATA.upper;
+  const lowerName = LOWER.name, upperName = UPPER.name;
+  const shortLower = lowerName.split(" (")[0], shortUpper = upperName.split(" (")[0];
+
+  // ---- time helpers (naive local timestamps, no timezone math) ----------
+  const toMin = s => { const [d, t] = s.split("T"); const [Y, M, D] = d.split("-").map(Number); const [h, m] = t.split(":").map(Number); return Date.UTC(Y, M - 1, D, h, m) / 60000; };
+  const t0 = toMin(H[0].time), t1 = toMin(H[N - 1].time);
+  const idxOf = s => (toMin(s) - t0) / (t1 - t0) * (N - 1);
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dayLabel = s => { const [Y, M, D] = s.split("T")[0].split("-").map(Number); const d = new Date(Date.UTC(Y, M - 1, D)); return `${DAYS[d.getUTCDay()]} ${D} ${MONTHS[M - 1]}`; };
+  const hhmm = s => s.split("T")[1];
+  const f1 = v => v == null ? "–" : v.toFixed(1);
+  const f0 = v => v == null ? "–" : Math.round(v).toString();
+  const fs = v => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(2);
+
+  // ---- header / status ---------------------------------------------------
+  const now = H[NOW];
+  document.getElementById("subtitle").textContent =
+    `${lowerName} (${LOWER.elevation_m ?? LOWER.elevation} m) and ${upperName} (${UPPER.elevation_m ?? UPPER.elevation} m), ${dayLabel(H[0].time)} ${hhmm(H[0].time)} to ${dayLabel(H[N-1].time)} ${hhmm(H[N-1].time)}. Model: ${DATA.model}.`;
+  document.getElementById("now-label").textContent = `Now · ${dayLabel(now.time)} ${hhmm(now.time)}`;
+  document.getElementById("scenario").textContent = now.scenario;
+  const stats = [
+    [fs(now.lapse_c_per_100m), "°C/100 m", "lapse rate between sites"],
+    [f1(now.lower.temperature_c), "°C", shortLower],
+    [f1(now.upper.temperature_c), "°C", shortUpper],
+    [now.moist_layer ? `${f0(now.moist_layer.base_msl_m)}–${now.moist_layer.top_msl_m == null ? "top" : f0(now.moist_layer.top_msl_m)}` : "none", now.moist_layer ? "m" : "", "cloud deck (RH ≥ 85 %)"],
+    [`${now.lower.fog_score} / ${now.upper.fog_score}`, "", "fog score lower / upper"],
+  ];
+  const statsEl = document.getElementById("stats");
+  for (const [v, u, l] of stats) {
+    const d = document.createElement("div"); d.className = "stat";
+    const dv = document.createElement("div"); dv.className = "v"; dv.textContent = v;
+    if (u) { const su = document.createElement("span"); su.className = "u"; su.textContent = u; dv.appendChild(su); }
+    const dl = document.createElement("div"); dl.className = "l"; dl.textContent = l;
+    d.append(dv, dl); statsEl.appendChild(d);
+  }
+
+  // ---- legend ------------------------------------------------------------
+  const legend = document.getElementById("legend");
+  const legendItems = [
+    ["key lower", shortLower], ["key upper", shortUpper], ["key thin", "cloud base (LCL) above " + shortLower],
+    ["swatch deck", "cloud deck (RH ≥ 85 %)"], ["swatch inv", "inversion zone"], ["swatch night", "night"],
+  ];
+  for (const [cls, label] of legendItems) {
+    const s = document.createElement("span"); const k = document.createElement("i"); k.className = cls; s.appendChild(k); s.appendChild(document.createTextNode(label)); legend.appendChild(s);
+  }
+
+  // ---- panels ------------------------------------------------------------
+  const cs = getComputedStyle(document.documentElement);
+  const C = k => cs.getPropertyValue(k).trim();
+  const PANELS = [
+    { key: "section", title: "Altitude cross-section", unit: "m MSL", h: 230, domain: [1300, 3300], ticks: [1500, 2000, 2500, 3000] },
+    { key: "temp", title: "Temperature at 2 m", unit: "°C", h: 150, domain: null },
+    { key: "lapse", title: "Lapse rate between the sites", unit: "°C per 100 m", h: 130, domain: [-1.0, 0.5], ticks: [-1.0, -0.5, 0, 0.5] },
+    { key: "fog", title: "Fog score", unit: "0–10", h: 110, domain: [0, 10], ticks: [0, 5, 10] },
+  ];
+  const svgNS = "http://www.w3.org/2000/svg";
+  const el = (name, attrs, parent) => { const e = document.createElementNS(svgNS, name); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  const text = (x, y, str, attrs, parent) => { const t = el("text", Object.assign({ x, y }, attrs), parent); t.textContent = str; return t; };
+
+  const wrap = document.getElementById("svgwrap");
+  const tip = document.getElementById("tip");
+  let geo = null;
+
+  function niceDomain(vals, step) {
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    lo = Math.floor(lo / step) * step - step / 2; hi = Math.ceil(hi / step) * step + step / 2;
+    return [lo, hi];
+  }
+
+  function render() {
+    const W = Math.max(320, wrap.clientWidth);
+    const padL = 54, padR = W < 560 ? 64 : 160, padT = 36, gap = 26, padB = 40;
+    const plotW = W - padL - padR;
+    const totalH = padT + PANELS.reduce((a, p) => a + p.h + gap, 0) - gap + padB;
+    wrap.replaceChildren();
+    const svg = el("svg", { viewBox: `0 0 ${W} ${totalH}`, width: W, height: totalH, role: "img", "aria-label": "Diagram of cloud deck, temperature, lapse rate and fog score across the day" });
+    wrap.appendChild(svg);
+    const x = i => padL + i / (N - 1) * plotW;
+    const half = plotW / (N - 1) / 2;
+
+    const temps = H.flatMap(h => [h.lower.temperature_c, h.upper.temperature_c]).filter(v => v != null);
+    PANELS[1].domain = niceDomain(temps, 2);
+    PANELS[1].ticks = []; for (let v = Math.ceil(PANELS[1].domain[0] / 4) * 4; v <= PANELS[1].domain[1]; v += 4) PANELS[1].ticks.push(v);
+
+    let yTop = padT;
+    const layout = [];
+    for (const p of PANELS) {
+      const y0 = yTop, y1 = yTop + p.h;
+      const y = v => y1 - (v - p.domain[0]) / (p.domain[1] - p.domain[0]) * p.h;
+      const yc = v => Math.max(y0, Math.min(y1, y(v)));
+      layout.push({ p, y0, y1, y, yc });
+      yTop = y1 + gap;
+    }
+    geo = { x, layout, padL, plotW, totalH, W };
+
+    // night shading + panel frames
+    const nights = [];
+    if (DATA.sun) {
+      const rises = DATA.sun.sunrise.map(idxOf), sets = DATA.sun.sunset.map(idxOf);
+      let start = 0;
+      const events = [...rises.map(v => [v, "rise"]), ...sets.map(v => [v, "set"])].sort((a, b) => a[0] - b[0]);
+      let dark = events.length && events[0][1] === "rise";
+      for (const [v, kind] of events) {
+        if (kind === "rise" && dark) { nights.push([start, v]); dark = false; }
+        else if (kind === "set") { start = v; dark = true; }
+      }
+      if (dark) nights.push([start, N - 1]);
+    }
+    for (const L of layout) {
+      for (const [a, b] of nights) {
+        const xa = x(Math.max(0, a)), xb = x(Math.min(N - 1, b));
+        if (xb > xa) el("rect", { x: xa, y: L.y0, width: xb - xa, height: L.p.h, fill: C("--night") }, svg);
+      }
+    }
+
+    // gridlines & y ticks
+    for (const L of layout) {
+      for (const v of L.p.ticks) {
+        const yy = L.y(v);
+        el("line", { x1: padL, x2: padL + plotW, y1: yy, y2: yy, stroke: C("--grid"), "stroke-width": 1 }, svg);
+        text(padL - 8, yy + 3.5, L.p.key === "section" ? v.toLocaleString("en") : (L.p.key === "lapse" ? fs(v).replace("+0.00", "0") : String(v)), { class: "tick", "text-anchor": "end" }, svg);
+      }
+      el("line", { x1: padL, x2: padL + plotW, y1: L.y1, y2: L.y1, stroke: C("--axis"), "stroke-width": 1 }, svg);
+      const t = text(padL, L.y0 - 8, L.p.title + " ", { class: "ptitle" }, svg);
+      const u = el("tspan", { class: "unit" }, t); u.textContent = L.p.unit;
+    }
+
+    // ---- panel 1: cross-section ---------------------------------------
+    {
+      const L = layout[0];
+      // cloud deck columns
+      H.forEach((h, i) => {
+        const m = h.moist_layer; if (!m) return;
+        const open = m.top_msl_m == null;
+        const top = open ? L.p.domain[1] : m.top_msl_m;
+        const yTopPx = L.yc(top), yBase = L.yc(m.base_msl_m);
+        if (yBase - yTopPx < 1) return;
+        el("rect", { x: x(i) - half + 1, y: yTopPx, width: Math.max(1, 2 * half - 2), height: yBase - yTopPx, fill: open ? C("--deck-open") : C("--deck"), rx: 2 }, svg);
+      });
+      // site lines
+      for (const [site, col, label] of [[LOWER, "--lower", shortLower], [UPPER, "--upper", shortUpper]]) {
+        const yy = L.y(site.elevation_m ?? site.elevation);
+        el("line", { x1: padL, x2: padL + plotW, y1: yy, y2: yy, stroke: C(col), "stroke-width": 2, "stroke-linecap": "round" }, svg);
+        text(padL + plotW + 8, yy + 4, `${label} ${site.elevation_m ?? site.elevation} m`, { class: "endlabel" }, svg);
+      }
+      // LCL cloud base line
+      const pts = H.map((h, i) => h.lower.cloud_base_msl_m == null ? null : [x(i), L.yc(h.lower.cloud_base_msl_m)]);
+      let d = "", pen = false;
+      pts.forEach(p => { if (!p) { pen = false; return; } d += (pen ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); pen = true; });
+      el("path", { d, fill: "none", stroke: C("--ink-2"), "stroke-width": 1.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    }
+
+    // ---- line helper -----------------------------------------------------
+    function line(L, get, color, width) {
+      let d = "", pen = false;
+      H.forEach((h, i) => { const v = get(h); if (v == null) { pen = false; return; } d += (pen ? "L" : "M") + x(i).toFixed(1) + " " + L.y(v).toFixed(1); pen = true; });
+      el("path", { d, fill: "none", stroke: color, "stroke-width": width || 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    }
+    function endLabel(L, get, label, col, dy) {
+      const last = H[N - 1]; const v = get(last); if (v == null) return;
+      const yy = L.y(v) + (dy || 0);
+      el("circle", { cx: x(N - 1), cy: L.y(v), r: 4, fill: col, stroke: C("--surface"), "stroke-width": 2 }, svg);
+      text(padL + plotW + 8, yy + 4, label, { class: "endlabel" }, svg);
+    }
+
+    // ---- panel 2: temperature -----------------------------------------
+    {
+      const L = layout[1];
+      line(L, h => h.lower.temperature_c, C("--lower"));
+      line(L, h => h.upper.temperature_c, C("--upper"));
+      const a = H[N - 1].lower.temperature_c, b = H[N - 1].upper.temperature_c;
+      let dyA = 0, dyB = 0;
+      if (a != null && b != null && Math.abs(L.y(a) - L.y(b)) < 14) { const s = (14 - Math.abs(L.y(a) - L.y(b))) / 2; if (L.y(a) < L.y(b)) { dyA = -s; dyB = s; } else { dyA = s; dyB = -s; } }
+      endLabel(L, h => h.lower.temperature_c, `${f1(a)} °C ${W < 560 ? "" : shortLower}`, C("--lower"), dyA);
+      endLabel(L, h => h.upper.temperature_c, `${f1(b)} °C ${W < 560 ? "" : shortUpper}`, C("--upper"), dyB);
+    }
+
+    // ---- panel 3: lapse rate ------------------------------------------
+    {
+      const L = layout[2];
+      el("rect", { x: padL, y: L.y0, width: plotW, height: Math.max(0, L.y(0) - L.y0), fill: C("--inversion") }, svg);
+      el("line", { x1: padL, x2: padL + plotW, y1: L.y(0), y2: L.y(0), stroke: C("--inversion-ink"), "stroke-width": 1 }, svg);
+      text(padL + plotW + 8, L.y(0) + 4, "inversion above 0", { class: "ref" }, svg);
+      el("line", { x1: padL, x2: padL + plotW, y1: L.y(-0.65), y2: L.y(-0.65), stroke: C("--axis"), "stroke-width": 1 }, svg);
+      text(padL + plotW + 8, L.y(-0.65) + 4, "standard −0.65", { class: "ref" }, svg);
+      line(L, h => h.lapse_c_per_100m, C("--ink"));
+      const v = H[N - 1].lapse_c_per_100m;
+      if (v != null) el("circle", { cx: x(N - 1), cy: L.y(v), r: 4, fill: C("--ink"), stroke: C("--surface"), "stroke-width": 2 }, svg);
+    }
+
+    // ---- panel 4: fog score -------------------------------------------
+    {
+      const L = layout[3];
+      line(L, h => h.lower.fog_score, C("--lower"));
+      line(L, h => h.upper.fog_score, C("--upper"));
+      // mark the maximum of each series
+      for (const [get, col] of [[h => h.lower.fog_score, "--lower"], [h => h.upper.fog_score, "--upper"]]) {
+        let bi = -1, bv = -1; H.forEach((h, i) => { const v = get(h); if (v > bv) { bv = v; bi = i; } });
+        if (bv >= 3) { el("circle", { cx: x(bi), cy: L.y(bv), r: 4, fill: C(col), stroke: C("--surface"), "stroke-width": 2 }, svg); text(x(bi), L.y(bv) - 9, `max ${bv}`, { class: "endlabel", "text-anchor": "middle" }, svg); }
+      }
+    }
+
+    // ---- x axis ----------------------------------------------------------
+    const last = layout[layout.length - 1];
+    H.forEach((h, i) => {
+      const hh = parseInt(hhmm(h.time), 10);
+      if (hh % 3 !== 0) return;
+      el("line", { x1: x(i), x2: x(i), y1: last.y1, y2: last.y1 + 4, stroke: C("--axis") }, svg);
+      if (hh % 6 === 0 || W > 700) text(x(i), last.y1 + 16, hhmm(h.time), { class: "tick", "text-anchor": "middle" }, svg);
+      if (hh === 0) {
+        for (const L of layout) el("line", { x1: x(i), x2: x(i), y1: L.y0, y2: L.y1, stroke: C("--axis"), "stroke-width": 1 }, svg);
+        text(x(i) + 4, last.y1 + 31, dayLabel(h.time), { class: "tick" }, svg);
+      }
+    });
+    text(x(0), last.y1 + 31, dayLabel(H[0].time), { class: "tick" }, svg);
+
+    // now marker
+    for (const L of layout) el("line", { x1: x(NOW), x2: x(NOW), y1: L.y0, y2: L.y1, stroke: C("--now"), "stroke-width": 1, "stroke-dasharray": "2 3", opacity: 0.8 }, svg);
+    text(x(NOW), padT - 24, "now", { class: "nowlabel", "text-anchor": "middle" }, svg);
+
+    // crosshair + hit layer
+    const cross = el("g", { style: "display:none" }, svg);
+    for (const L of layout) el("line", { x1: 0, x2: 0, y1: L.y0, y2: L.y1, stroke: C("--ink"), "stroke-width": 1, opacity: 0.6 }, cross);
+    const hit = el("rect", { x: padL - half, y: padT, width: plotW + 2 * half, height: totalH - padT - padB, fill: "transparent", style: "cursor:crosshair" }, svg);
+    const show = i => {
+      i = Math.max(0, Math.min(N - 1, i));
+      cross.style.display = ""; cross.querySelectorAll("line").forEach(l => { l.setAttribute("x1", x(i)); l.setAttribute("x2", x(i)); });
+      renderTip(i);
+      const rect = wrap.getBoundingClientRect(), scale = rect.width / W;
+      const px = x(i) * scale;
+      tip.style.display = "block";
+      const tw = tip.offsetWidth;
+      const left = px + 14 + tw > rect.width ? px - tw - 14 : px + 14;
+      tip.style.left = (wrap.offsetLeft + Math.max(0, left)) + "px";
+      tip.style.top = (wrap.offsetTop + 8) + "px";
+    };
+    const hide = () => { cross.style.display = "none"; tip.style.display = "none"; };
+    hit.addEventListener("pointermove", e => { const r = svg.getBoundingClientRect(); const px = (e.clientX - r.left) * W / r.width; show(Math.round((px - padL) / plotW * (N - 1))); });
+    hit.addEventListener("pointerleave", hide);
+    hit.setAttribute("tabindex", "0"); hit.setAttribute("aria-label", "Hourly values, use arrow keys");
+    let focusIdx = NOW;
+    hit.addEventListener("focus", () => show(focusIdx));
+    hit.addEventListener("blur", hide);
+    hit.addEventListener("keydown", e => { if (e.key === "ArrowRight") { focusIdx = Math.min(N - 1, focusIdx + 1); show(focusIdx); e.preventDefault(); } if (e.key === "ArrowLeft") { focusIdx = Math.max(0, focusIdx - 1); show(focusIdx); e.preventDefault(); } });
+  }
+
+  function renderTip(i) {
+    const h = H[i];
+    tip.replaceChildren();
+    const t = document.createElement("div"); t.className = "t"; t.textContent = `${dayLabel(h.time)} ${hhmm(h.time)}${i === NOW ? " · now" : ""}`; tip.appendChild(t);
+    const sc = document.createElement("div"); sc.className = "sc"; sc.textContent = h.scenario; tip.appendChild(sc);
+    const tbl = document.createElement("table");
+    const row = (v, n, col) => { const tr = document.createElement("tr"); const a = document.createElement("td"); a.className = "v"; a.textContent = v; const b = document.createElement("td"); b.className = "n"; if (col) { const k = document.createElement("span"); k.className = "k"; k.style.borderColor = C(col); b.appendChild(k); } b.appendChild(document.createTextNode(n)); tr.append(a, b); tbl.appendChild(tr); };
+    row(`${f1(h.lower.temperature_c)} °C`, `${shortLower}, RH ${f0(h.lower.relative_humidity)} %`, "--lower");
+    row(`${f1(h.upper.temperature_c)} °C`, `${shortUpper}, RH ${f0(h.upper.relative_humidity)} %`, "--upper");
+    row(`${fs(h.lapse_c_per_100m)}`, h.inversion_between_sites ? "°C/100 m, inversion" : "°C/100 m");
+    row(`${h.lower.fog_score} / ${h.upper.fog_score}`, `fog score, ${h.lower.fog_category}`);
+    const m = h.moist_layer;
+    row(m ? `${f0(m.base_msl_m)}–${m.top_msl_m == null ? "top" : f0(m.top_msl_m)} m` : "none", "cloud deck");
+    row(`${f0(h.lower.cloud_base_msl_m)} m`, `cloud base above ${shortLower}`);
+    row(`${f0(h.lower.cloud_cover_low)} / ${f0(h.upper.cloud_cover_low)} %`, "low cloud lower / upper");
+    tip.appendChild(tbl);
+  }
+
+  // ---- table -------------------------------------------------------------
+  {
+    const tbl = document.getElementById("table");
+    const head = ["time", `T ${shortLower}`, `T ${shortUpper}`, "lapse", "inv", `fog ${shortLower}`, `fog ${shortUpper}`, `RH lo`, `RH up`, "deck base", "deck top", "cloud base", "scenario"];
+    const thead = document.createElement("thead"); const trh = document.createElement("tr");
+    for (const c of head) { const th = document.createElement("th"); th.textContent = c; trh.appendChild(th); } thead.appendChild(trh); tbl.appendChild(thead);
+    const tb = document.createElement("tbody");
+    H.forEach((h, i) => {
+      const tr = document.createElement("tr"); if (i === NOW) tr.className = "now";
+      const m = h.moist_layer;
+      const cells = [h.time.replace("T", " "), f1(h.lower.temperature_c), f1(h.upper.temperature_c), fs(h.lapse_c_per_100m), h.inversion_between_sites ? "yes" : "", h.lower.fog_score, h.upper.fog_score, f0(h.lower.relative_humidity), f0(h.upper.relative_humidity), m ? f0(m.base_msl_m) : "", m ? (m.top_msl_m == null ? "top" : f0(m.top_msl_m)) : "", f0(h.lower.cloud_base_msl_m), h.scenario];
+      cells.forEach((c, k) => { const td = document.createElement("td"); td.textContent = c; if (k === cells.length - 1) td.style.textAlign = "left"; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb);
+  }
+
+  render();
+  let raf = null;
+  new ResizeObserver(() => { if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }).observe(wrap);
+  if (window.matchMedia) { for (const q of ["(prefers-color-scheme: dark)"]) window.matchMedia(q).addEventListener("change", render); }
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>

@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
+import os
 import sys
 import time
 import urllib.error
@@ -117,6 +117,7 @@ def build_query(lower: Site, upper: Site, hours: int, model: str) -> str:
         "forecast_hours": hours,
         "current": ",".join(current),
         "hourly": ",".join(hourly),
+        "daily": "sunrise,sunset",
         "models": model,
     }
     return API_URL + "?" + urllib.parse.urlencode(params)
@@ -525,6 +526,23 @@ def print_report(now_idx: int, hours: list[dict[str, Any]], lower: Site, upper: 
     print("the upper site is warmer than the lower one.")
 
 
+TEMPLATE_NAME = "inversion_chart.template.html"
+
+
+def write_html(path: str, payload: dict[str, Any]) -> None:
+    """Fill the chart template next to this script with the analysis payload."""
+    template = os.path.join(os.path.dirname(os.path.abspath(__file__)), TEMPLATE_NAME)
+    try:
+        with open(template, encoding="utf-8") as fh:
+            html = fh.read()
+    except OSError as exc:
+        raise SystemExit(f"Chart template not found: {template} ({exc})") from exc
+    blob = json.dumps(payload).replace("</", "<\\/")
+    html = html.replace("__INVERSION_DATA__", blob)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(html)
+
+
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
@@ -540,6 +558,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default="best_match",
                     help="Open-Meteo model, e.g. best_match, icon_d2, icon_eu, ecmwf_ifs025")
     ap.add_argument("--json", action="store_true", help="print JSON instead of text")
+    ap.add_argument("--html", metavar="FILE", help="also write an interactive chart page to FILE")
     ap.add_argument("--dump-url", action="store_true", help="print the API URL and exit")
     args = ap.parse_args(argv)
 
@@ -561,20 +580,25 @@ def main(argv: list[str] | None = None) -> int:
     now_idx = times.index(now_key) if now_key in times else 0
 
     hours = [analyse_hour(lower, upper, low_h, up_h, i) for i in range(len(times))]
+    daily = data[0].get("daily", {})
+    payload = {
+        "generated": datetime.now().isoformat(timespec="seconds"),
+        "model": args.model,
+        "lower": asdict(lower),
+        "upper": asdict(upper),
+        "now_index": now_idx,
+        "sun": {"sunrise": daily.get("sunrise", []), "sunset": daily.get("sunset", [])},
+        "current": [d["current"] for d in data],
+        "hours": hours,
+    }
 
+    if args.html:
+        write_html(args.html, payload)
+        print(f"chart written to {args.html}", file=sys.stderr)
     if args.json:
-        out = {
-            "generated": datetime.now().isoformat(timespec="seconds"),
-            "model": args.model,
-            "lower": asdict(lower),
-            "upper": asdict(upper),
-            "now_index": now_idx,
-            "current": [d["current"] for d in data],
-            "hours": hours,
-        }
-        json.dump(out, sys.stdout, indent=2)
+        json.dump(payload, sys.stdout, indent=2)
         print()
-    else:
+    elif not args.html:
         print_report(now_idx, hours, lower, upper, args.model, data)
     return 0
 
