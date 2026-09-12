@@ -118,7 +118,12 @@ def sample(points: list[dict[str, float]], step_m: float) -> list[dict[str, floa
         if p["dist"] >= nxt:
             want.add(i)
             nxt += step_m
-    return [points[i] for i in sorted(want)]
+    chosen: list[dict[str, float]] = []
+    for i in sorted(want):
+        if chosen and i != len(points) - 1 and points[i]["dist"] - chosen[-1]["dist"] < step_m * 0.3:
+            continue                                   # too close to the previous sample
+        chosen.append(points[i])
+    return chosen
 
 
 # --------------------------------------------------------------------------- #

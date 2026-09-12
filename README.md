@@ -98,6 +98,8 @@ python hike_forecast.py routes/quellenweg.gpx --start 10:00 --reverse      # wal
 python hike_forecast.py routes/quellenweg.gpx --start 10:00 --json
 ```
 
-`routes/quellenweg.gpx` is the Quellenweg themed trail in Serfaus-Fiss-Ladis
-(Schönjoch top station 2407 m down to the Komperdell station / Murmliwasser
-at 1976 m, 5.6 km), taken from the public Komoot smart tour.
+`routes/quellenweg.gpx` is the Quellenweg themed trail in Serfaus-Fiss-Ladis,
+walked uphill from the Komperdell station / Murmliwasser (1983 m) to the
+Fisser Joch (2426 m): 6.0 km, +450 m, about 1 h 45 min. It is the official
+Outdooractive track (route 244292271, https://out.ac/IASvKc). Use `--reverse`
+for the descent.
