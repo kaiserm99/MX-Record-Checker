@@ -6,7 +6,7 @@
  * Usage: node scripts/build-single-file.mjs
  */
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,6 +62,8 @@ html = html.replace(/<script([^>]*?)src="(\/_next\/[^"]+\.js[^"]*)"([^>]*)><\/sc
   const attrs = (a + b).replace(/\s(async|defer|crossorigin(="[^"]*")?)/g, "");
   let js = readOut(src).toString("utf8").replace(/<\/script/gi, "<\\/script");
   // Next derives its asset prefix from document.currentScript.src, which an inline script lacks
+  // some libraries carry a literal U+FFFD in string/regex literals; the escape is equivalent and survives any host
+  js = js.replace(/\uFFFD/g, "\\uFFFD");
   js = js.replace(/new URL\((\w+)\.src\)(,\w+=\w+\.indexOf\("\/_next\/"\))/g, 'new URL($1.src||"/_next/",location.href)$2');
   return `<script${attrs}>${js}</script>`;
 });
