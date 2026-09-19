@@ -44,3 +44,13 @@ src/data/site.ts    Inhalte
 ```
 
 Die Nominierten sind frei erfunden. Ab 18. Trink verantwortungsvoll.
+
+## Einzeldatei-Build (Hosting ohne Node)
+
+```bash
+node scripts/build-single-file.mjs
+```
+
+Erzeugt `out/single.html`: die komplette Seite in einer Datei, mit allen Skripten, Styles und Schriften
+eingebettet. Die Datei kann auf jedem statischen Host abgelegt werden. `out/artifact.html` ist dieselbe
+Seite ohne `<html>`/`<head>`/`<body>`-Gerüst für Hosts, die die Seite selbst einbetten (z. B. claude.ai-Artifacts).
