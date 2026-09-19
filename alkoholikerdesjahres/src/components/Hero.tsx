@@ -115,7 +115,7 @@ export default function Hero() {
             className="mt-12 grid max-w-lg grid-cols-3 gap-4 border-t border-line pt-6 text-sm"
           >
             {[
-              ["Wann", "Silvester"],
+              ["Wann", "23. Dezember"],
               ["Wo", "Hinterzimmer"],
               ["Dresscode", "Standfest"],
             ].map(([k, v]) => (

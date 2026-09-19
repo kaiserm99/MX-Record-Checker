@@ -77,7 +77,7 @@ export default function Countdown() {
                 Noch ein paar Runden <span className="text-gold">bis zur Verleihung.</span>
               </>
             }
-            text="Pünktlich zum Jahreswechsel wird der Pokal übergeben. Wer zu spät kommt, hält die Laudatio."
+            text="Zwei Tage vor Heiligabend, wie jedes Jahr, wird der Pokal übergeben. Wer zu spät kommt, hält die Laudatio."
           />
           <Reveal delay={0.15} className="mt-8 flex flex-col gap-3 text-sm text-foam-2">
             <p className="flex items-center gap-3">

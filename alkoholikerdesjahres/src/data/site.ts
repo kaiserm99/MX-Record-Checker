@@ -7,8 +7,8 @@ export const site = {
   tagline: "Die einzige Auszeichnung, bei der niemand nüchtern gewinnt.",
   description:
     "Alkoholiker des Jahres – die satirische Verleihung unter Freund:innen. Nominierte, Hall of Fame, Regeln und Countdown zur großen Gala 2026.",
-  ceremonyDate: "2026-12-31T20:00:00+01:00",
-  ceremonyLabel: "Silvester, 31.12.2026 · 20:00 Uhr",
+  ceremonyDate: "2026-12-23T20:00:00+01:00",
+  ceremonyLabel: "Mittwoch, 23.12.2026 · 20:00 Uhr",
   ceremonyPlace: "Stammtisch · Hinterzimmer · Eingang über den Hof",
   juryMail: "jury@alkoholikerdesjahres.de",
 };
@@ -125,7 +125,7 @@ export const rules = [
   {
     step: "03",
     title: "Gala",
-    text: "Silvester wird verliehen. Roter Teppich optional, Dankesrede Pflicht, Länge nach oben offen.",
+    text: "Am 23. Dezember wird verliehen, jedes Jahr. Roter Teppich optional, Dankesrede Pflicht, Länge nach oben offen.",
   },
   {
     step: "04",
